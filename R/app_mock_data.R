@@ -1,38 +1,36 @@
 ea_market_catalog <- function() {
+  required_markets <- tibble::tribble(
+    ~market, ~label, ~complex, ~default_focus_order,
+    "CL", "CL", "Crude Oil", 1L,
+    "NG", "NG", "Natural Gas", 2L,
+    "HTT", "HTT", "Natural Gas", 3L,
+    "BRN", "BRN", "Crude Oil", 4L,
+    "HO", "HO", "Refined Products", 5L,
+    "RB", "RB", "Refined Products", 6L
+  )
+
   registry <- tryCatch(
     ea_load_dataset("market_registry"),
     error = function(...) NULL
   )
 
   if (is.null(registry)) {
-    registry <- tibble::tribble(
-      ~market, ~label, ~default_focus_order,
-      "CL", "WTI Crude", 1L,
-      "BRN", "Brent Crude", 2L,
-      "NG", "Natural Gas", 3L,
-      "HO", "ULSD", 4L,
-      "RB", "RBOB Gasoline", 5L
-    )
+    registry <- required_markets
   }
 
+  if (!"label" %in% names(registry)) registry$label <- registry$market
+  if (!"complex" %in% names(registry)) registry$complex <- "Cross-Commodity"
+  if (!"default_focus_order" %in% names(registry)) registry$default_focus_order <- seq_len(nrow(registry))
+
+  missing_markets <- dplyr::anti_join(required_markets, registry, by = "market")
+  registry <- dplyr::bind_rows(registry, missing_markets)
+
   registry |>
-    dplyr::filter(.data$market %in% c("CL", "BRN", "RB", "HO", "NG")) |>
+    dplyr::filter(.data$market %in% required_markets$market) |>
     dplyr::mutate(
-      label = dplyr::case_when(
-        .data$market == "CL" ~ "WTI",
-        .data$market == "BRN" ~ "Brent",
-        .data$market == "RB" ~ "RBOB",
-        .data$market == "HO" ~ "ULSD",
-        .data$market == "NG" ~ "Henry Hub NG",
-        TRUE ~ .data$label
-      ),
-      complex = dplyr::case_when(
-        .data$market %in% c("CL", "BRN") ~ "Crude Oil",
-        .data$market %in% c("RB", "HO") ~ "Refined Products",
-        .data$market == "NG" ~ "Natural Gas",
-        TRUE ~ "Cross-Commodity"
-      ),
-      focus_order = dplyr::coalesce(.data$default_focus_order, dplyr::row_number())
+      label = required_markets$label[match(.data$market, required_markets$market)],
+      complex = dplyr::coalesce(required_markets$complex[match(.data$market, required_markets$market)], .data$complex),
+      focus_order = dplyr::coalesce(required_markets$default_focus_order[match(.data$market, required_markets$market)], .data$default_focus_order, dplyr::row_number())
     ) |>
     dplyr::arrange(.data$focus_order) |>
     dplyr::select(dplyr::all_of(c("market", "label", "complex")))
@@ -93,10 +91,7 @@ ea_global_filter_defaults <- function(catalog = ea_market_catalog()) {
     tenor_bucket = c("Front", "Quarterly"),
     expiry_range = c(1, 12),
     regime = c("All Regimes"),
-    seasonality_toggle = TRUE,
-    scenario_preset = "Base Case",
-    hedge_objective = "Client Cross-Hedge",
-    view_density = "comfortable"
+    scenario_preset = "Base Case"
   )
 }
 
@@ -118,15 +113,15 @@ ea_market_index <- function(market) {
 }
 
 ea_market_base_price <- function(market) {
-  ea_lookup_value(c(CL = 74.25, BRN = 77.10, RB = 2.23, HO = 2.34, NG = 3.18), market)
+  ea_lookup_value(c(CL = 74.25, NG = 3.18, HTT = 11.85, BRN = 77.10, HO = 2.34, RB = 2.23), market)
 }
 
 ea_market_base_vol <- function(market) {
-  ea_lookup_value(c(CL = 0.31, BRN = 0.29, RB = 0.34, HO = 0.32, NG = 0.47), market)
+  ea_lookup_value(c(CL = 0.31, NG = 0.47, HTT = 0.44, BRN = 0.29, HO = 0.32, RB = 0.34), market)
 }
 
 ea_market_curve_slope <- function(market) {
-  ea_lookup_value(c(CL = 0.22, BRN = 0.18, RB = 0.012, HO = 0.014, NG = -0.055), market)
+  ea_lookup_value(c(CL = 0.22, NG = -0.055, HTT = -0.038, BRN = 0.18, HO = 0.014, RB = 0.012), market)
 }
 
 ea_dates <- function(n = 180L, end_date = ea_reference_end_date()) {
@@ -191,7 +186,7 @@ ea_mock_overview_data <- function(filters) {
     "ATMF vol", scales::percent(0.25 + primary_idx * 0.035, accuracy = 0.1), "front contract", "wave-square", "warning",
     "Intercommodity spread", paste0(scales::number(-1.05 + comparison_idx * 0.14, accuracy = 0.01), " sigma"), "vs benchmark", "arrows-left-right", "neutral",
     "Cross-hedge ratio", scales::number(0.68 + comparison_idx * 0.06, accuracy = 0.01), "current beta", "shield-alt", "positive",
-    "Market regime", if (isTRUE(filters$seasonality_toggle)) "Seasonal carry" else "Flow reset", "current state", "calendar-day", "neutral"
+    "Market regime", "Seasonal carry", "current state", "calendar-day", "neutral"
   )
 
   detail_table <- tibble::tibble(
@@ -213,7 +208,7 @@ ea_mock_overview_data <- function(filters) {
     bullets = c(
       "Front calendar spreads are steeper than the back curve, so the primary signal is curve shape rather than outright price.",
       "Cross-product correlation is still high enough for hedge discussions, but proxy products are decoupling at the short end.",
-      "Seasonal overlay is active, so carry and cross-hedge conversations should be read together."
+      "Seasonal structure remains relevant, so carry and cross-hedge conversations should be read together."
     )
   )
 
@@ -647,6 +642,117 @@ ea_mock_scenario_data <- function(filters, shocks = list(flat = 0, vol = 0, spre
     assumptions = c(
       "Impact figures are synthetic.",
       "Shocks currently drive only UI placeholders."
+    )
+  )
+}
+
+ea_mock_fundamentals_data <- function(filters) {
+  catalog <- ea_market_catalog()
+  markets <- ea_coalesce(filters$commodities, ea_global_filter_defaults(catalog)$commodities[1:2])
+  labels <- stats::setNames(catalog$label, catalog$market)
+  primary <- markets[[1]]
+  primary_label <- ea_lookup_value(labels, primary)
+  is_gas <- identical(primary, "NG")
+
+  dates <- seq.Date(ea_reference_end_date() - 182, ea_reference_end_date(), by = "week")
+  future_months <- format(seq.Date(as.Date(ea_reference_end_date()), by = "month", length.out = 6), "%b %Y")
+
+  base_inventory <- ea_lookup_value(
+    c(CL = 435, BRN = 355, RB = 228, HO = 162, NG = 2380),
+    primary
+  )
+  seasonal_span <- ea_lookup_value(
+    c(CL = 34, BRN = 28, RB = 18, HO = 16, NG = 280),
+    primary
+  )
+
+  steps <- seq_along(dates)
+  avg_5y <- base_inventory + sin(steps / 5 + ea_market_index(primary)) * seasonal_span * 0.18
+  current <- avg_5y + cos(steps / 4.2 + ea_market_index(primary) / 2) * seasonal_span * 0.24
+
+  inventory_curve <- tibble::tibble(
+    date = dates,
+    avg_5y = avg_5y,
+    low_5y = avg_5y - seasonal_span * 0.42,
+    high_5y = avg_5y + seasonal_span * 0.42,
+    current = current
+  )
+
+  regional_locations <- if (is_gas) {
+    c("East", "Midwest", "South Central", "Mountain", "Pacific")
+  } else {
+    c("Cushing", "USGC", "Midwest", "East Coast", "ARA")
+  }
+
+  regional_storage <- tibble::tibble(
+    location = regional_locations,
+    level = base_inventory / length(regional_locations) + seq_along(regional_locations) * seasonal_span * 0.18,
+    delta_vs_5y = c(6.2, -3.1, 4.8, -1.7, 2.3) * if (is_gas) 4 else 1
+  )
+
+  balance_monitor <- tibble::tibble(
+    month = future_months,
+    balance = c(0.42, 0.28, -0.16, -0.34, -0.08, 0.19) * if (is_gas) 2.4 else 1,
+    utilization = c(89.6, 90.8, 91.4, 90.1, 88.7, 87.9)
+  )
+
+  headlines <- tibble::tribble(
+    ~time, ~source, ~tag, ~tone, ~headline, ~summary,
+    "07:05", "EIA", "Inventory", "neutral", paste(primary_label, "stocks printed near the market median ahead of the open."), "Front structure remains more reactive than outright level after the release.",
+    "08:20", "NOAA", "Weather", "warning", "Updated temperature outlook tightened the near-term gas demand window.", "Weather sensitivity remains concentrated in the prompt period and nearby basis hubs.",
+    "09:10", "Pipeline", "Flows", "accent", "Maintenance guidance points to a short-lived flow constraint across a major corridor.", "Basis and storage optionality are likely to matter more than flat price if the outage extends.",
+    "10:00", "Macro", "Policy", "neutral", "Refined product demand guidance was revised modestly higher into the next reporting window.", "Watch cracks and runs together rather than reading the update as a flat-price signal."
+  )
+
+  release_calendar <- tibble::tribble(
+    ~Release, ~Next, ~Focus, ~Priority, ~Comment,
+    "EIA Weekly Petroleum Status", "Wed 08:30 ET", "Crude / products", "High", "Headline inventory and runs release.",
+    "API Weekly Stats", "Tue 16:30 ET", "Crude / products", "Medium", "Early inventory signal before EIA confirmation.",
+    "EIA Natural Gas Storage", "Thu 10:30 ET", "Henry Hub NG", "High", "Storage delta and regional composition.",
+    "NOAA 6-10 Day Outlook", "Daily 15:00 ET", "Weather", "Medium", "Demand risk for gas and power-linked products."
+  )
+
+  physical_signals <- tibble::tribble(
+    ~Indicator, ~Latest, ~`vs 5Y`, ~Bias, ~Comment,
+    "Commercial inventories", paste0(scales::number(current[[length(current)]], accuracy = 0.1), if (is_gas) " bcf" else " mbbl"), paste0(scales::number(current[[length(current)]] - avg_5y[[length(avg_5y)]], accuracy = 0.1), if (is_gas) " bcf" else " mbbl"), "Neutral/Tight", "Current stocks are holding inside the five-year band but trending tighter in the prompt window.",
+    "Prompt basis", if (is_gas) "+0.18 $/MMBtu" else "+0.42 $/bbl", "+0.11", "Firm", "Basis is doing more of the work than flat price in the nearby structure.",
+    "System utilization", "90.8%", "+1.6 pts", "Supportive", "Operational intensity is holding above seasonal norms.",
+    "Export pull", if (is_gas) "14.2 bcf/d" else "4.1 mb/d", "+0.4", "Constructive", "Outbound pull is absorbing inventories faster than domestic demand alone."
+  )
+
+  inventory_axis <- if (is_gas) "Storage (bcf)" else "Inventories (mbbl)"
+  regional_axis <- if (is_gas) "vs 5Y (bcf)" else "vs 5Y (mbbl)"
+  balance_axis <- if (is_gas) "Implied balance (bcf/d)" else "Implied balance (mb/d)"
+
+  kpis <- tibble::tribble(
+    ~title, ~value, ~delta, ~icon, ~status,
+    "Storage vs 5Y", paste0(scales::number(current[[length(current)]] - avg_5y[[length(avg_5y)]], accuracy = 0.1), if (is_gas) " bcf" else " mbbl"), "latest versus seasonal average", "warehouse", "neutral",
+    "Weekly change", paste0(scales::number(current[[length(current)]] - current[[length(current) - 1]], accuracy = 0.1), if (is_gas) " bcf" else " mbbl"), "latest print", "arrow-trend-up", "accent",
+    "System utilization", "90.8%", "operational intensity", "industry", "positive",
+    "Prompt basis", if (is_gas) "+0.18 $/MMBtu" else "+0.42 $/bbl", "front location spread", "arrows-left-right", "warning",
+    "Next release", "EIA", "Wed 08:30 ET", "calendar", "neutral"
+  )
+
+  list(
+    kpis = kpis,
+    inventory_curve = inventory_curve,
+    regional_storage = regional_storage,
+    balance_monitor = balance_monitor,
+    headlines = headlines,
+    release_calendar = release_calendar,
+    physical_signals = physical_signals,
+    inventory_title = if (is_gas) "Storage vs Five-Year Range" else "Inventories vs Five-Year Range",
+    inventory_subtitle = paste(primary_label, "current trajectory versus the seasonal range."),
+    inventory_axis = inventory_axis,
+    regional_axis = regional_axis,
+    balance_axis = balance_axis,
+    notes = c(
+      "Fundamentals is designed as a physical market context page for inventory, storage, and catalyst monitoring.",
+      "Charts and tables are placeholders and keep a clean contract for backend attachment."
+    ),
+    assumptions = c(
+      "Headline items are synthetic and should be replaced by a real news feed.",
+      "Storage, balance, and utilization values are deterministic placeholders."
     )
   )
 }

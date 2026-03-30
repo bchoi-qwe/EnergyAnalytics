@@ -5,10 +5,11 @@ ea_accent_color <- function() {
 ea_market_palette <- function() {
   c(
     CL = "#4da3a3",
-    BRN = "#d2a157",
-    RB = "#d36e70",
-    HO = "#b98054",
     NG = "#5a85c8",
+    HTT = "#74a66e",
+    BRN = "#d2a157",
+    HO = "#b98054",
+    RB = "#d36e70",
     UST = "#7f8b99"
   )
 }
@@ -170,10 +171,7 @@ ea_selected_filters_ribbon <- function(filters, data_timestamp) {
     if (length(benchmark_label) > 0L) {
       ea_badge(paste("Benchmark", benchmark_label), tone = "neutral")
     },
-    ea_badge(paste("Lookback", filters$rolling_window), tone = "neutral"),
-    if (isTRUE(filters$seasonality_toggle)) {
-      ea_badge("Seasonal overlay", tone = "positive")
-    }
+    ea_badge(paste("Lookback", filters$rolling_window), tone = "neutral")
   )
 
   htmltools::tags$div(
@@ -194,6 +192,7 @@ ea_nav_registry <- function() {
   tibble::tribble(
     ~value, ~code, ~label, ~description,
     "overview", "MM", "Market Monitor", "Outrights, spreads, and benchmark context",
+    "fundamentals", "FD", "Fundamentals", "Inventories, balances, and news flow",
     "forward_curves", "TS", "Term Structure", "Curve shape, curve history, and spreads",
     "volatility", "VS", "Vol Surface", "ATMF term structure and smile",
     "codynamics", "CR", "Correlations", "Rolling correlation and intercommodity spread",
@@ -226,6 +225,7 @@ ea_shell_header <- function() {
   htmltools::tags$div(
     class = "ea-topbar",
     shiny::uiOutput("topbar_page", container = htmltools::tags$div),
+    shiny::uiOutput("topbar_scope", container = htmltools::tags$div),
     htmltools::tags$div(
       class = "ea-topbar__actions",
       htmltools::tags$div(
@@ -268,16 +268,16 @@ ea_plotly_layout <- function(fig, x_title = NULL, y_title = NULL, hovermode = "x
         font = list(
           color = "#e6edf5",
           family = "IBM Plex Sans",
-          size = 12
+          size = 11
         ),
         namelength = -1
       ),
-      font = list(color = "#e6edf5", family = "IBM Plex Sans"),
-      margin = list(l = 55, r = 20, t = 12, b = 48),
+      font = list(color = "#e6edf5", family = "IBM Plex Sans", size = 11),
+      margin = list(l = 50, r = 18, t = 10, b = 42),
       legend = list(
         orientation = "h",
         x = 0,
-        y = -0.18,
+        y = -0.15,
         bgcolor = "rgba(0,0,0,0)"
       ),
       xaxis = list(

@@ -56,6 +56,35 @@ app_server <- function(input, output, session) {
     )
   })
 
+  output$topbar_scope <- shiny::renderUI({
+    current_filters <- filters()
+    product_labels <- ea_market_labels(current_filters$commodities)
+    benchmark_label <- ea_market_labels(current_filters$comparison_commodity)
+
+    product_text <- if (length(product_labels) == 0L) {
+      "No products selected"
+    } else {
+      paste(head(product_labels, 3), collapse = " / ")
+    }
+
+    if (length(product_labels) > 3L) {
+      product_text <- paste0(product_text, " +", length(product_labels) - 3L)
+    }
+
+    htmltools::tags$div(
+      class = "ea-topbar__scope",
+      htmltools::tags$span(class = "ea-topbar__scope-item ea-topbar__scope-item--primary", product_text),
+      if (length(benchmark_label) > 0L) {
+        htmltools::tagList(
+          htmltools::tags$span(class = "ea-topbar__scope-sep", "|"),
+          htmltools::tags$span(class = "ea-topbar__scope-item", paste("Bench", benchmark_label))
+        )
+      },
+      htmltools::tags$span(class = "ea-topbar__scope-sep", "|"),
+      htmltools::tags$span(class = "ea-topbar__scope-item", paste("Lookback", current_filters$rolling_window))
+    )
+  })
+
   output$header_timestamp <- shiny::renderText({
     ea_format_timestamp(data_timestamp())
   })
@@ -75,6 +104,7 @@ app_server <- function(input, output, session) {
   })
 
   mod_overview_server("overview", filters = filters, data_timestamp = data_timestamp)
+  mod_fundamentals_server("fundamentals", filters = filters, data_timestamp = data_timestamp)
   mod_forward_curves_server("forward_curves", filters = filters, data_timestamp = data_timestamp)
   mod_volatility_server("volatility", filters = filters, data_timestamp = data_timestamp)
   mod_codynamics_server("codynamics", filters = filters, data_timestamp = data_timestamp)

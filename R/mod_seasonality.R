@@ -26,7 +26,7 @@ mod_seasonality_server <- function(id, filters, data_timestamp) {
           ea_empty_state_card(
             title = "Select products to populate seasonal views",
             body = "Seasonality compares recurring structure in outrights, calendar spreads, and year-on-year paths.",
-            hint = "Use the seasonal overlay toggle to keep calendar structure explicit."
+            hint = "Choose one or more products to compare recurring calendar structure across markets."
           ),
           mod_footer_notes_ui(ns("footer_notes"))
         ))

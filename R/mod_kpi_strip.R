@@ -10,32 +10,23 @@ mod_kpi_strip_server <- function(id, kpis) {
         return(NULL)
       }
 
-      width <- max(floor(12 / nrow(kpi_data)), 2)
-
-      boxes <- lapply(seq_len(nrow(kpi_data)), function(i) {
+      pills <- lapply(seq_len(nrow(kpi_data)), function(i) {
         row <- kpi_data[i, ]
 
-        bslib::value_box(
-          title = row$title,
-          value = htmltools::tags$div(class = "ea-kpi-box__value", row$value),
-          htmltools::tags$div(class = "ea-kpi-box__delta", row$delta),
-          full_screen = FALSE,
-          min_height = "120px",
-          class = paste("ea-kpi-box", paste0("ea-kpi-box--", row$status))
+        htmltools::tags$div(
+          class = paste("ea-kpi-pill", paste0("ea-kpi-pill--", row$status)),
+          htmltools::tags$div(class = "ea-kpi-pill__label", row$title),
+          htmltools::tags$div(
+            class = "ea-kpi-pill__body",
+            htmltools::tags$div(class = "ea-kpi-pill__value", row$value),
+            htmltools::tags$div(class = "ea-kpi-pill__delta", row$delta)
+          )
         )
       })
 
-      do.call(
-        bslib::layout_columns,
-        c(
-          boxes,
-          list(
-            col_widths = rep(width, length(boxes)),
-            fill = FALSE,
-            fillable = TRUE,
-            class = "ea-kpi-strip"
-          )
-        )
+      htmltools::tags$div(
+        class = "ea-kpi-strip",
+        pills
       )
     })
   })

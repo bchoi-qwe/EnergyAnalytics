@@ -23,9 +23,7 @@ mod_global_filters_ui <- function(id) {
           choices = character(0),
           multiple = TRUE,
           options = list(
-            `live-search` = TRUE,
-            `actions-box` = TRUE,
-            `selected-text-format` = "count > 2"
+            `selected-text-format` = "values"
           )
         )
       ),
@@ -34,8 +32,7 @@ mod_global_filters_ui <- function(id) {
         shinyWidgets::pickerInput(
           inputId = ns("comparison_commodity"),
           label = "Benchmark",
-          choices = character(0),
-          options = list(`live-search` = TRUE)
+          choices = character(0)
         )
       ),
       htmltools::tags$div(
@@ -81,8 +78,7 @@ mod_global_filters_ui <- function(id) {
             label = "Tenor set",
             choices = c("Front", "Quarterly", "Seasonal", "Calendar"),
             selected = c("Front", "Quarterly"),
-            multiple = TRUE,
-            options = list(`actions-box` = TRUE)
+            multiple = TRUE
           )
         ),
         htmltools::tags$div(
@@ -102,8 +98,7 @@ mod_global_filters_ui <- function(id) {
             label = "Regime",
             choices = c("All Regimes", "Contango", "Backwardation", "Vol Shock", "Inventory Stress", "Shoulder Season"),
             selected = "All Regimes",
-            multiple = TRUE,
-            options = list(`actions-box` = TRUE)
+            multiple = TRUE
           )
         ),
         htmltools::tags$div(
@@ -113,38 +108,6 @@ mod_global_filters_ui <- function(id) {
             label = "Shock set",
             choices = c("Base Case", "Supply Squeeze", "Refined Product Dislocation", "Gas Vol Shock"),
             selected = "Base Case"
-          )
-        ),
-        htmltools::tags$div(
-          class = "ea-toolbar__field ea-toolbar__field--inline",
-          shinyWidgets::prettySwitch(
-            inputId = ns("seasonality_toggle"),
-            label = "Seasonal overlay",
-            value = TRUE,
-            status = "info",
-            fill = TRUE
-          )
-        ),
-        htmltools::tags$div(
-          class = "ea-toolbar__field ea-toolbar__field--sm",
-          shinyWidgets::pickerInput(
-            inputId = ns("hedge_objective"),
-            label = "Hedge use case",
-            choices = c("Client Cross-Hedge", "Inventory Protection", "Margin Protection", "Curve Transfer"),
-            selected = "Client Cross-Hedge"
-          )
-        ),
-        htmltools::tags$div(
-          class = "ea-toolbar__field ea-toolbar__field--density",
-          shinyWidgets::radioGroupButtons(
-            inputId = ns("view_density"),
-            label = "Density",
-            choices = c("Comfortable" = "comfortable", "Compact" = "compact"),
-            justified = FALSE,
-            selected = "comfortable",
-            status = "default",
-            size = "sm",
-            checkIcon = list(yes = shiny::icon("check"))
           )
         )
       )
@@ -208,10 +171,7 @@ mod_global_filters_server <- function(id, market_catalog, reset_trigger = shiny:
       shinyWidgets::updatePickerInput(session, "tenor_bucket", selected = default_values$tenor_bucket)
       shiny::updateSliderInput(session, "expiry_range", value = default_values$expiry_range)
       shinyWidgets::updatePickerInput(session, "regime", selected = default_values$regime)
-      shinyWidgets::updatePrettySwitch(session, "seasonality_toggle", value = default_values$seasonality_toggle)
       shinyWidgets::updatePickerInput(session, "scenario_preset", selected = default_values$scenario_preset)
-      shinyWidgets::updatePickerInput(session, "hedge_objective", selected = default_values$hedge_objective)
-      shinyWidgets::updateRadioGroupButtons(session, "view_density", selected = default_values$view_density)
     }
 
     shiny::observeEvent(market_catalog(), {
@@ -270,10 +230,7 @@ mod_global_filters_server <- function(id, market_catalog, reset_trigger = shiny:
         tenor_bucket = ea_coalesce(input$tenor_bucket, default_values$tenor_bucket),
         expiry_range = ea_coalesce(input$expiry_range, default_values$expiry_range),
         regime = ea_coalesce(input$regime, default_values$regime),
-        seasonality_toggle = isTRUE(ea_coalesce(input$seasonality_toggle, default_values$seasonality_toggle)),
-        scenario_preset = ea_coalesce(input$scenario_preset, default_values$scenario_preset),
-        hedge_objective = ea_coalesce(input$hedge_objective, default_values$hedge_objective),
-        view_density = ea_coalesce(input$view_density, default_values$view_density)
+        scenario_preset = ea_coalesce(input$scenario_preset, default_values$scenario_preset)
       )
     })
   })
