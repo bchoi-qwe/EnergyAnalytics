@@ -1,0 +1,14 @@
+^artifacts$
+^data-raw$
+^notes$
+^scripts$
+^renv$
+^renv\.lock$
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.Rprofile$
+^\.Renviron$
+^\.Renviron\.example$
+^\.gitignore$
+^\.gitattributes$
+^LICENSE\.md$
