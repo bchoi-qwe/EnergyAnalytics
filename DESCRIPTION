@@ -1,0 +1,51 @@
+Package: EnergyAnalytics
+Title: Data Foundation and Dashboard UI for Energy Analytics
+Version: 0.0.0.9000
+Authors@R: 
+    person(
+      given = "Brandon",
+      family = "Choi",
+      role = c("aut", "cre"),
+      email = "brandonchoi@users.noreply.github.com"
+    )
+Description: Creates and loads local, versioned calculation datasets for the
+    EnergyAnalytics project and provides the UI shell for a production-style
+    Golem dashboard. Source data is normalized into canonical Feather datasets
+    for downstream calculations. The current dashboard remains a shell with
+    deterministic mock analytics outputs while backend calculations are wired
+    to the local snapshot, so the app never calls external APIs at runtime.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.3.0)
+Imports:
+    arrow,
+    bslib,
+    cli,
+    digest,
+    dplyr,
+    glue,
+    golem,
+    htmltools,
+    jsonlite,
+    lubridate,
+    plotly,
+    purrr,
+    reactable,
+    readr,
+    RTL,
+    scales,
+    shiny,
+    shinycssloaders,
+    shinyWidgets,
+    stringr,
+    tibble,
+    tidyr,
+    tidyquant
+Suggests:
+    devtools,
+    pkgload,
+    testthat (>= 3.0.0)
+Remotes:
+    risktoollib/RTL@5f0749d7b8cadb5155c1bf613250fe795e078209
+Config/testthat/edition: 3

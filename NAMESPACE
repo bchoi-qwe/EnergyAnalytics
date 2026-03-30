@@ -1,0 +1,8 @@
+export(ea_build_latest_snapshot)
+export(ea_create_snapshot_bundle)
+export(ea_data_path)
+export(ea_latest_data_dir)
+export(ea_load_dataset)
+export(ea_load_manifest)
+export(ea_validate_snapshot_dir)
+export(run_app)

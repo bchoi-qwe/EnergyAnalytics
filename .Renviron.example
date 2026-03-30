@@ -1,0 +1,8 @@
+# Required for live EIA pulls used by `scripts/build-data.R`.
+EIA_API_KEY=replace-with-your-eia-api-key
+
+# Optional: helps `renv::restore()` avoid GitHub rate limits when restoring RTL.
+# GITHUB_PAT=ghp_your_token_here
+
+# Optional: shared renv cache location for CI or Docker builds.
+# RENV_PATHS_ROOT=~/.cache/R/renv

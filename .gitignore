@@ -8,6 +8,7 @@
 
 # User-specific files
 .Ruserdata
+.DS_Store
 
 # Example code in package build process
 *-Ex.R
@@ -38,6 +39,7 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+.Renviron.local
 
 # pkgdown site
 docs/
@@ -47,3 +49,8 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+artifacts/
+renv/library/
+renv/local/
+renv/python/
+renv/staging/

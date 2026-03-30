@@ -1,0 +1,84 @@
+{
+  "snapshot_id": "20260330T003711Z",
+  "schema_version": "0.1.0",
+  "built_at_utc": "2026-03-30T00:37:44Z",
+  "sources": [
+    {
+      "name": "RTL",
+      "version": "RTL::dflong@1.3.8"
+    },
+    {
+      "name": "FRED",
+      "version": "tidyquant::tq_get@1.0.12"
+    },
+    {
+      "name": "EIA",
+      "version": "RTL::eia2tidy_all@1.3.8"
+    }
+  ],
+  "datasets": {
+    "market_registry": {
+      "file": "market_registry.feather",
+      "rows": 6,
+      "columns": 10,
+      "min_date": null,
+      "max_date": null,
+      "sha256": "7692ce504e3e4fac458656d4cfcca61156f8bc9091b0fc3115539a5f195f6757",
+      "bytes": 2994
+    },
+    "commodity_curve_long": {
+      "file": "commodity_curve_long.feather",
+      "rows": 701419,
+      "columns": 12,
+      "min_date": "2007-01-02",
+      "max_date": "2026-03-26",
+      "sha256": "fa82fe7d32e903f4d848ac17b2d49b966f7c806882de0dc0212455e9fd4f91ce",
+      "bytes": 22278642
+    },
+    "commodity_curve_wide": {
+      "file": "commodity_curve_wide.feather",
+      "rows": 4966,
+      "columns": 145,
+      "min_date": "2007-01-02",
+      "max_date": "2026-03-26",
+      "sha256": "7462ff88571e682c79b14199e19167fce310cb3329c6551ec8c1654b29a85de3",
+      "bytes": 2392554
+    },
+    "contract_expiry_metadata": {
+      "file": "contract_expiry_metadata.feather",
+      "rows": 1644,
+      "columns": 12,
+      "min_date": null,
+      "max_date": null,
+      "sha256": "ab14f91008bbf8905e1d652b096d797a8593b8e0880f347da5410f49f8c087b3",
+      "bytes": 35794
+    },
+    "ust_curve_long": {
+      "file": "ust_curve_long.feather",
+      "rows": 28127,
+      "columns": 12,
+      "min_date": "2016-01-04",
+      "max_date": "2026-03-26",
+      "sha256": "0dbe2ee2e6757883072c8130cfaf37a8f2e37de9cbd9ec9219854476780c3d42",
+      "bytes": 747458
+    },
+    "eia_stocks_long": {
+      "file": "eia_stocks_long.feather",
+      "rows": 6152,
+      "columns": 11,
+      "min_date": "1982-08-20",
+      "max_date": "2026-03-20",
+      "sha256": "ca752c242796ed40458678612fcc8edc39e84a2a22b4370c1efc4a04e216c56b",
+      "bytes": 162090
+    },
+    "eia_storage_capacity_long": {
+      "file": "eia_storage_capacity_long.feather",
+      "rows": 318,
+      "columns": 11,
+      "min_date": "1982-01-01",
+      "max_date": "2025-12-01",
+      "sha256": "f3dd1584e623a429b734a921b5bf292d59acc5d9a218529900f60371eb934f21",
+      "bytes": 10802
+    }
+  }
+}
