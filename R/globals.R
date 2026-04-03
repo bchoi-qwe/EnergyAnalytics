@@ -31,5 +31,18 @@ utils::globalVariables(c(
   "tick.prefix",
   "ticker",
   "unit",
-  "value"
+  "value",
+  "cp_num",
+  "days_to_expiry",
+  "forward",
+  "iv",
+  "last_trade",
+  "moneyness",
+  "strike",
+  "vanna",
+  "charm",
+  "gamma",
+  "vega",
+  "speed",
+  "zomma"
 ))

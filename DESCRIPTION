@@ -32,6 +32,7 @@ Imports:
     plotly,
     purrr,
     reactable,
+    Rcpp,
     readr,
     RTL,
     scales,
@@ -42,6 +43,8 @@ Imports:
     tibble,
     tidyr,
     tidyquant
+LinkingTo:
+    Rcpp
 Suggests:
     devtools,
     pkgload,

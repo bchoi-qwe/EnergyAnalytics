@@ -107,6 +107,7 @@ app_server <- function(input, output, session) {
   mod_fundamentals_server("fundamentals", filters = filters, data_timestamp = data_timestamp)
   mod_forward_curves_server("forward_curves", filters = filters, data_timestamp = data_timestamp)
   mod_volatility_server("volatility", filters = filters, data_timestamp = data_timestamp)
+  mod_options_greeks_server("options_greeks", filters = filters, data_timestamp = data_timestamp)
   mod_codynamics_server("codynamics", filters = filters, data_timestamp = data_timestamp)
   mod_seasonality_server("seasonality", filters = filters, data_timestamp = data_timestamp)
   mod_hedging_server("hedging", filters = filters, data_timestamp = data_timestamp)

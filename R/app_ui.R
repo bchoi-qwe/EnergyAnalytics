@@ -23,6 +23,7 @@ app_ui <- function(request) {
               bslib::nav_panel("Fundamentals", value = "fundamentals", mod_fundamentals_ui("fundamentals")),
               bslib::nav_panel("Term Structure", value = "forward_curves", mod_forward_curves_ui("forward_curves")),
               bslib::nav_panel("Vol Surface", value = "volatility", mod_volatility_ui("volatility")),
+              bslib::nav_panel("Options Greeks", value = "options_greeks", mod_options_greeks_ui("options_greeks")),
               bslib::nav_panel("Correlations", value = "codynamics", mod_codynamics_ui("codynamics")),
               bslib::nav_panel("Seasonality", value = "seasonality", mod_seasonality_ui("seasonality")),
               bslib::nav_panel("Cross-Hedge", value = "hedging", mod_hedging_ui("hedging")),

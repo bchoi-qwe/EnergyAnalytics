@@ -195,6 +195,7 @@ ea_nav_registry <- function() {
     "fundamentals", "FD", "Fundamentals", "Inventories, balances, and news flow",
     "forward_curves", "TS", "Term Structure", "Curve shape, curve history, and spreads",
     "volatility", "VS", "Vol Surface", "ATMF term structure and smile",
+    "options_greeks", "OG", "Options Greeks", "Black-76 Greeks across the vol surface",
     "codynamics", "CR", "Correlations", "Rolling correlation and intercommodity spread",
     "seasonality", "SE", "Seasonality", "Calendar structure and seasonal spreads",
     "hedging", "CH", "Cross-Hedge", "Hedge ratios, basis, and effectiveness",
