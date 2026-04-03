@@ -49,7 +49,8 @@ ea_build_latest_snapshot <- function(latest_dir = NULL, release_dir = NULL, snap
     contract_expiry_metadata = ea_build_contract_expiry_metadata(),
     ust_curve_long = ea_build_ust_curve_long(),
     eia_stocks_long = ea_build_eia_stocks_long(),
-    eia_storage_capacity_long = ea_build_eia_storage_capacity_long()
+    eia_storage_capacity_long = ea_build_eia_storage_capacity_long(),
+    options_surface_long = ea_build_options_surface_long()
   )
 
   purrr::iwalk(
@@ -491,6 +492,12 @@ ea_dataset_specs <- function() {
     eia_storage_capacity_long = c(
       "date", "source_series", "product", "location", "value",
       "unit", "source"
+    ),
+    options_surface_long = c(
+      "date", "market", "contract_month", "days_to_expiry", "strike",
+      "option_type", "underlying_price", "implied_volatility",
+      "delta", "gamma", "vega", "theta", "rho", "vanna", "charm",
+      "speed", "zomma", "color", "ultima"
     )
   )
 }
