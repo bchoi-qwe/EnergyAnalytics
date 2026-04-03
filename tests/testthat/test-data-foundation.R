@@ -65,7 +65,8 @@ test_that("all canonical feather datasets load", {
       "contract_expiry_metadata.feather",
       "ust_curve_long.feather",
       "eia_stocks_long.feather",
-      "eia_storage_capacity_long.feather"
+      "eia_storage_capacity_long.feather",
+      "options_surface_long.feather"
     )
   )
 
@@ -74,6 +75,24 @@ test_that("all canonical feather datasets load", {
     expect_s3_class(df, "data.frame")
     expect_gt(nrow(df), 0)
   }))
+})
+
+test_that("options calculated metrics layer is valid", {
+  skip_if_no_snapshot()
+  options_surface <- ea_load_dataset("options_surface_long")
+
+  expect_s3_class(options_surface, "data.frame")
+  expect_gt(nrow(options_surface), 0)
+  expect_s3_class(options_surface$date, "Date")
+
+  # Key greeks and IV should be numeric and populated
+  expect_type(options_surface$implied_volatility, "double")
+  expect_type(options_surface$delta, "double")
+  expect_false(any(is.na(options_surface$implied_volatility)))
+  expect_false(any(is.na(options_surface$delta)))
+
+  # Check that all 19 columns are present as per schema
+  expect_equal(ncol(options_surface), 19L)
 })
 
 test_that("curve datasets satisfy canonical schema constraints", {
@@ -118,7 +137,7 @@ test_that("manifest hashes match current files", {
   )
 
   expect_equal(manifest$schema_version, "0.1.0")
-  expect_true(length(manifest$datasets) == 7L)
+  expect_true(length(manifest$datasets) == 8L)
   expect_setequal(manifest$sources$name, c("RTL", "FRED", "EIA"))
 
   current <- lapply(checksum_file$file, function(file) {
@@ -192,4 +211,22 @@ test_that("source policy requires the intended live source clients", {
   expect_true(grepl("RTL::eia2tidy_all", audit_text, fixed = TRUE))
   expect_true(grepl("tidyquant::tq_get", audit_text, fixed = TRUE))
   expect_true(grepl("RTL::expiry_table", audit_text, fixed = TRUE))
+})
+
+test_that("options calculated metrics layer is valid", {
+  skip_if_no_snapshot()
+  options_surface <- ea_load_dataset("options_surface_long")
+
+  expect_s3_class(options_surface, "data.frame")
+  expect_gt(nrow(options_surface), 0)
+  expect_s3_class(options_surface$date, "Date")
+
+  # Key greeks and IV should be numeric and populated
+  expect_type(options_surface$implied_volatility, "double")
+  expect_type(options_surface$delta, "double")
+  expect_false(any(is.na(options_surface$implied_volatility)))
+  expect_false(any(is.na(options_surface$delta)))
+
+  # Check that all 19 columns are present as per schema
+  expect_equal(ncol(options_surface), 19L)
 })
