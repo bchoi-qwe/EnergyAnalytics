@@ -111,14 +111,8 @@ Rcpp::DataFrame black76_greeks_vectorised(
     vomma[i] = vega[i] * d1 * d2 / si;
 
     // Charm (dDelta/dt = -dDelta/dT)
-    // Charm = -df * nd1 * (2*r*T - d2*sig*sqrt_T) / (2*T*sig*sqrt_T)
-    double charm_val = df * nd1 * (2.0 * ri * Ti - d2 * sig_sqT) / (2.0 * Ti * sig_sqT);
-    if (!call_i) {
-      // put charm has an additional term from the discount factor derivative
-      // but under Black-76 both call and put delta differ by df,
-      // so charm_put = charm_call + r * df
-    }
-    charm[i] = charm_val;
+    // For Black-76, the drift is 0, giving a simplified Charm.
+    charm[i] = ri * delta[i] + df * nd1 * d2 / (2.0 * Ti);
 
     // ------ 3RD ORDER ------
     // Speed (dGamma/dF = d³V/dF³)
@@ -128,14 +122,13 @@ Rcpp::DataFrame black76_greeks_vectorised(
     zomma[i] = gamma[i] * (d1 * d2 - 1.0) / si;
 
     // Color (dGamma/dt = -dGamma/dT)
-    // Color = -gamma / (2*T) * (1 + d1*(2*r*T - d2*sig*sqrt_T)/(sig*sqrt_T))
-    double color_inner = 2.0 * ri * Ti - d2 * sig_sqT;
-    color[i] = -gamma[i] / (2.0 * Ti) * (1.0 + d1 * color_inner / sig_sqT);
+    // For Black-76, color simplifies due to the lack of drift
+    color[i] = ri * gamma[i] + gamma[i] * (1.0 - d1 * d2) / (2.0 * Ti);
 
     // Ultima (dVomma/dσ = d³V/dσ³)
-    // Ultima = -vega / (sigma^2) * (d1*d2*(1 - d1*d2) + d1^2 + d2^2)
+    // Standard explicit form avoiding the minus sign distribution
     double d1d2 = d1 * d2;
-    ultima[i] = -vega[i] / (si * si) * (d1d2 * (1.0 - d1d2) + d1 * d1 + d2 * d2);
+    ultima[i] = vega[i] / (si * si) * (d1d2 * (d1d2 - 1.0) - (d1 * d1 + d2 * d2));
   }
 
   return Rcpp::DataFrame::create(

@@ -49,8 +49,14 @@ ea_build_latest_snapshot <- function(latest_dir = NULL, release_dir = NULL, snap
     contract_expiry_metadata = ea_build_contract_expiry_metadata(),
     ust_curve_long = ea_build_ust_curve_long(),
     eia_stocks_long = ea_build_eia_stocks_long(),
-    eia_storage_capacity_long = ea_build_eia_storage_capacity_long(),
-    options_surface_long = ea_build_options_surface_long()
+    eia_storage_capacity_long = ea_build_eia_storage_capacity_long()
+  )
+
+  # Add options surface cube using in-memory dependencies
+  datasets$options_surface_long <- ea_build_options_surface_long(
+    futures = datasets$commodity_curve_long,
+    ust_curve = datasets$ust_curve_long,
+    expiry_meta = datasets$contract_expiry_metadata
   )
 
   purrr::iwalk(
@@ -183,8 +189,8 @@ ea_validate_snapshot_dir <- function(snapshot_dir = NULL) {
   }
 
   ust_nodes <- loaded$ust_curve_long |>
-    dplyr::distinct(curve_point) |>
-    dplyr::pull(curve_point) |>
+    dplyr::distinct(.data$curve_point) |>
+    dplyr::pull(.data$curve_point) |>
     sort()
   if (length(ust_nodes) != 11L) {
     cli::cli_abort("UST curve data does not contain all 11 maturity nodes.")
@@ -194,8 +200,8 @@ ea_validate_snapshot_dir <- function(snapshot_dir = NULL) {
     list(loaded$commodity_curve_long, loaded$ust_curve_long),
     function(df) {
       ordered <- df |>
-        dplyr::distinct(market, curve_point, curve_point_num) |>
-        dplyr::arrange(market, curve_point_num)
+        dplyr::distinct(.data$market, .data$curve_point, .data$curve_point_num) |>
+        dplyr::arrange(.data$market, .data$curve_point_num)
       if (any(duplicated(ordered[, c("market", "curve_point_num")]))) {
         cli::cli_abort("Curve point ordering is not stable within markets.")
       }
@@ -261,39 +267,39 @@ ea_build_commodity_curve_long <- function() {
   utils::data("dflong", package = "RTL", envir = environment())
 
   registry <- ea_build_market_registry() |>
-    dplyr::filter(market_type == "commodity") |>
-    dplyr::select(market, unit, raw_unit, market_type)
+    dplyr::filter(.data$market_type == "commodity") |>
+    dplyr::select(.data$market, .data$unit, .data$raw_unit, .data$market_type)
 
   dflong |>
     dplyr::mutate(
-      market = stringr::str_extract(series, "^[A-Z]+"),
-      curve_point_num = readr::parse_number(series),
-      curve_point = stringr::str_pad(as.character(curve_point_num), width = 2, pad = "0")
+      market = stringr::str_extract(.data$series, "^[A-Z]+"),
+      curve_point_num = readr::parse_number(.data$series),
+      curve_point = stringr::str_pad(as.character(.data$curve_point_num), width = 2, pad = "0")
     ) |>
-    dplyr::filter(market %in% registry$market) |>
+    dplyr::filter(.data$market %in% registry$market) |>
     dplyr::inner_join(registry, by = "market") |>
     dplyr::transmute(
-      date = as.Date(date),
-      market,
-      curve_point,
-      curve_point_num = as.numeric(curve_point_num),
-      value = as.numeric(value),
-      unit,
-      market_type,
+      date = as.Date(.data$date),
+      .data$market,
+      .data$curve_point,
+      curve_point_num = as.numeric(.data$curve_point_num),
+      value = as.numeric(.data$value),
+      .data$unit,
+      .data$market_type,
       source = "RTL",
       source_family = "RTL::dflong",
-      source_series = series,
+      source_series = .data$series,
       frequency = "business_daily",
-      raw_unit
+      .data$raw_unit
     ) |>
-    dplyr::arrange(date, market, curve_point_num)
+    dplyr::arrange(.data$date, .data$market, .data$curve_point_num)
 }
 
 ea_build_commodity_curve_wide <- function() {
   ea_build_commodity_curve_long() |>
-    dplyr::select(date, source_series, value) |>
-    tidyr::pivot_wider(names_from = source_series, values_from = value) |>
-    dplyr::arrange(date)
+    dplyr::select(.data$date, .data$source_series, .data$value) |>
+    tidyr::pivot_wider(names_from = .data$source_series, values_from = .data$value) |>
+    dplyr::arrange(.data$date)
 }
 
 ea_build_contract_expiry_metadata <- function() {
@@ -312,28 +318,28 @@ ea_build_contract_expiry_metadata <- function() {
   expiry_table |>
     dplyr::inner_join(market_map, by = c("tick.prefix" = "tick_prefix")) |>
     dplyr::transmute(
-      market,
-      source_market = cmdty,
-      source_series = tick.prefix,
-      contract_year = as.integer(Year),
-      contract_month = as.integer(Month),
-      contract_month_letter = Month.Letter,
-      first_notice = as.Date(First.Notice),
-      first_delivery = as.Date(First.Delivery),
-      last_trade = as.Date(Last.Trade),
-      last_delivery = as.Date(Last.Delivery),
+      .data$market,
+      source_market = .data$cmdty,
+      source_series = .data$tick.prefix,
+      contract_year = as.integer(.data$Year),
+      contract_month = as.integer(.data$Month),
+      contract_month_letter = .data$Month.Letter,
+      first_notice = as.Date(.data$First.Notice),
+      first_delivery = as.Date(.data$First.Delivery),
+      last_trade = as.Date(.data$Last.Trade),
+      last_delivery = as.Date(.data$Last.Delivery),
       source = "RTL",
       source_family = "RTL::expiry_table"
     ) |>
-    dplyr::group_by(market, source_series, contract_year, contract_month) |>
+    dplyr::group_by(.data$market, .data$source_series, .data$contract_year, .data$contract_month) |>
     dplyr::arrange(
-      dplyr::desc(last_trade),
-      dplyr::desc(first_notice),
+      dplyr::desc(.data$last_trade),
+      dplyr::desc(.data$first_notice),
       .by_group = TRUE
     ) |>
     dplyr::slice(1L) |>
     dplyr::ungroup() |>
-    dplyr::arrange(market, contract_year, contract_month, source_series)
+    dplyr::arrange(.data$market, .data$contract_year, .data$contract_month, .data$source_series)
 }
 
 ea_build_ust_curve_long <- function() {

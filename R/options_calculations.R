@@ -5,14 +5,24 @@
 #' @importFrom Rcpp sourceCpp
 NULL
 
-ea_interpolate_risk_free <- function(ust_curve, days_to_expiry) {
-  ust_latest <- ust_curve |>
-    dplyr::filter(date == max(date)) |>
-    dplyr::arrange(curve_point_num) |>
-    dplyr::select(curve_point_num, value)
+ea_interpolate_risk_free <- function(ust_curve, days_to_expiry, target_date = NULL) {
+  target_date <- target_date %||% max(ust_curve$date, na.rm = TRUE)
 
-  tenors_years <- ust_latest$curve_point_num
-  rates <- ust_latest$value / 100
+  ust_snapshot <- ust_curve |>
+    dplyr::filter(.data$date == as.Date(target_date)) |>
+    dplyr::arrange(.data$curve_point_num) |>
+    dplyr::select(.data$curve_point_num, .data$value)
+
+  if (nrow(ust_snapshot) == 0L) {
+    # Fallback to latest if date not found
+    ust_snapshot <- ust_curve |>
+      dplyr::filter(.data$date == max(.data$date)) |>
+      dplyr::arrange(.data$curve_point_num) |>
+      dplyr::select(.data$curve_point_num, .data$value)
+  }
+
+  tenors_years <- ust_snapshot$curve_point_num
+  rates <- ust_snapshot$value / 100
 
   vapply(
     days_to_expiry,
@@ -24,6 +34,155 @@ ea_interpolate_risk_free <- function(ust_curve, days_to_expiry) {
     },
     numeric(1)
   )
+}
+
+#' Build the Unified Options Cube
+#' @export
+ea_build_options_surface_long <- function(raw_options_dir = "data-raw/options_chains",
+                                          futures = NULL,
+                                          ust_curve = NULL,
+                                          expiry_meta = NULL) {
+  # Schema definition for consistency in empty returns
+  empty_result <- tibble::tibble(
+    date = as.Date(character()),
+    market = character(),
+    contract_month = character(),
+    days_to_expiry = numeric(),
+    strike = numeric(),
+    option_type = character(),
+    underlying_price = numeric(),
+    implied_volatility = numeric(),
+    delta = numeric(),
+    gamma = numeric(),
+    vega = numeric(),
+    theta = numeric(),
+    rho = numeric(),
+    vanna = numeric(),
+    charm = numeric(),
+    speed = numeric(),
+    zomma = numeric(),
+    color = numeric(),
+    ultima = numeric()
+  )
+
+  # 1. Load Input Data
+  options_files <- list.files(raw_options_dir, pattern = "\\.csv$", full.names = TRUE)
+  if (length(options_files) == 0L) {
+    return(empty_result)
+  }
+
+  raw_options <- purrr::map_dfr(options_files, readr::read_csv, show_col_types = FALSE) |>
+    dplyr::mutate(obs_date = as.Date(.data$obs_date))
+
+  # Use provided dependencies or load from disk
+  futures <- futures %||% ea_load_dataset("commodity_curve_long")
+  ust_curve <- ust_curve %||% ea_load_dataset("ust_curve_long")
+  expiry_meta <- expiry_meta %||% ea_load_dataset("contract_expiry_metadata")
+
+  # 2. Map Futures Curve Points to Contract Months (Optimized)
+  target_dates <- unique(raw_options$obs_date)
+  target_markets <- unique(raw_options$market)
+
+  # Create a mapping of (market, date, curve_point_num) -> contract_month
+  # This uses the expiry table to find which contract is '01', '02', etc. on each date.
+  curve_map <- expiry_meta |>
+    dplyr::filter(.data$market %in% target_markets) |>
+    dplyr::select(.data$market, .data$contract_year, .data$contract_month, .data$last_trade) |>
+    dplyr::cross_join(tibble::tibble(obs_date = target_dates)) |>
+    dplyr::filter(.data$last_trade >= .data$obs_date) |>
+    dplyr::group_by(.data$market, .data$obs_date) |>
+    dplyr::arrange(.data$last_trade) |>
+    dplyr::mutate(curve_point_num = as.numeric(dplyr::row_number())) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(contract_month_label = sprintf("%04d-%02d", .data$contract_year, .data$contract_month)) |>
+    dplyr::select(.data$obs_date, .data$market, .data$curve_point_num, contract_month = .data$contract_month_label, .data$last_trade)
+
+  # Join curve_map to futures to get the underlying price for each contract month
+  futures_mapped <- futures |>
+    dplyr::filter(.data$date %in% target_dates, .data$market %in% target_markets) |>
+    dplyr::inner_join(curve_map, by = c("date" = "obs_date", "market", "curve_point_num")) |>
+    dplyr::select(.data$date, .data$market, .data$contract_month, underlying_price = .data$value, .data$last_trade)
+
+  # 3. Join Raw Options to Mapped Futures
+  options_prep <- raw_options |>
+    dplyr::inner_join(futures_mapped, by = c("obs_date" = "date", "market", "contract_month")) |>
+    dplyr::mutate(
+      dte = pmax(as.numeric(difftime(.data$last_trade, .data$obs_date, units = "days")), 1),
+      T_years = .data$dte / 365.25
+    )
+
+  if (nrow(options_prep) == 0L) return(empty_result)
+
+  # 4. Calculate Risk Free Rates
+  options_prep$risk_free <- purrr::map2_dbl(
+    options_prep$dte, options_prep$obs_date,
+    ~ ea_interpolate_risk_free(ust_curve, .x, .y)
+  )
+
+  # 4. Calculate IV (Newton-Raphson)
+  calc_iv <- function(F, K, r, T, premium, is_call) {
+    sig <- rep(0.3, length(F))
+    for (i in 1:15) {
+      g <- black76_greeks_vectorised(F, K, r, T, sig, is_call)
+      diff <- g$premium - premium
+      idx <- !is.na(diff) & abs(diff) > 1e-6
+      if (!any(idx)) break
+      update_idx <- idx & !is.na(g$vega) & g$vega > 1e-8
+      if (!any(update_idx)) break
+      sig[update_idx] <- sig[update_idx] - (diff[update_idx] / g$vega[update_idx])
+      sig <- pmax(pmin(sig, 5.0), 0.001)
+    }
+    sig
+  }
+
+  options_prep$iv <- calc_iv(
+    options_prep$underlying_price, options_prep$strike, options_prep$risk_free,
+    options_prep$T_years, options_prep$premium, options_prep$type == "C"
+  )
+
+  # 5. Calculate All Greeks
+  greeks <- black76_greeks_vectorised(
+    options_prep$underlying_price, options_prep$strike, options_prep$risk_free,
+    options_prep$T_years, options_prep$iv, options_prep$type == "C"
+  )
+
+  # 6. Final Formatting
+  options_prep |>
+    dplyr::mutate(
+      implied_volatility = .data$iv,
+      delta = greeks$delta,
+      gamma = greeks$gamma,
+      vega = greeks$vega,
+      theta = greeks$theta,
+      rho = greeks$rho,
+      vanna = greeks$vanna,
+      charm = greeks$charm,
+      speed = greeks$speed,
+      zomma = greeks$zomma,
+      color = greeks$color,
+      ultima = greeks$ultima
+    ) |>
+    dplyr::select(
+      date = .data$obs_date,
+      .data$market,
+      .data$contract_month,
+      days_to_expiry = .data$dte,
+      .data$strike,
+      option_type = .data$type,
+      .data$underlying_price,
+      .data$implied_volatility,
+      .data$delta,
+      .data$gamma,
+      .data$vega,
+      .data$theta,
+      .data$rho,
+      .data$vanna,
+      .data$charm,
+      .data$speed,
+      .data$zomma,
+      .data$color,
+      .data$ultima
+    )
 }
 
 ea_generate_vol_surface <- function(markets, forwards_df, catalog) {
@@ -159,16 +318,16 @@ ea_calc_surface_greeks <- function(filters) {
     dplyr::select(curve_point_num, moneyness, charm)
 
   term_greeks <- full_grid |>
-    dplyr::filter(abs(moneyness - 1.0) < 0.01) |>
-    dplyr::select(market, label, curve_point, curve_point_num, gamma, vega)
+    dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
+    dplyr::select(.data$market, .data$label, .data$curve_point, .data$curve_point_num, .data$gamma, .data$vega)
 
   prompt_num <- min(full_grid$curve_point_num)
   strike_profile <- full_grid |>
-    dplyr::filter(market == primary, curve_point_num == prompt_num) |>
-    dplyr::select(moneyness, strike, speed, zomma)
+    dplyr::filter(.data$market == primary, .data$curve_point_num == prompt_num) |>
+    dplyr::select(.data$moneyness, .data$strike, .data$speed, .data$zomma)
 
   primary_atm <- full_grid |>
-    dplyr::filter(market == primary, abs(moneyness - 1.0) < 0.01)
+    dplyr::filter(.data$market == primary, abs(.data$moneyness - 1.0) < 0.01)
 
   kpis <- tibble::tribble(
     ~title, ~value, ~delta, ~icon, ~status,
@@ -253,9 +412,9 @@ ea_greeks_fallback <- function(markets, labels) {
 
   term_greeks <- purrr::map_dfr(markets, function(mkt) {
     full_grid |>
-      dplyr::filter(abs(moneyness - 1.0) < 0.01) |>
+      dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
       dplyr::mutate(market = mkt, label = ea_lookup_value(labels, mkt)) |>
-      dplyr::select(market, label, curve_point, curve_point_num, gamma, vega)
+      dplyr::select(.data$market, .data$label, .data$curve_point, .data$curve_point_num, .data$gamma, .data$vega)
   })
 
   strike_profile <- full_grid |>

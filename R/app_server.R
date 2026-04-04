@@ -64,7 +64,7 @@ app_server <- function(input, output, session) {
     product_text <- if (length(product_labels) == 0L) {
       "No products selected"
     } else {
-      paste(head(product_labels, 3), collapse = " / ")
+      paste(utils::head(product_labels, 3), collapse = " / ")
     }
 
     if (length(product_labels) > 3L) {
