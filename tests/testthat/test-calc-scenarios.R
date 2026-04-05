@@ -130,3 +130,24 @@ test_that("return_distribution has correct schema", {
     expect_true(all(c("market", "mean_return", "sd_return", "var_95") %in% names(rd)))
   }
 })
+
+test_that("factor_decomposition has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_scenarios(filters, list(flat = 5, vol = 2, spread = 1))
+  fd <- result$factor_decomposition
+  expect_s3_class(fd, "data.frame")
+  if (nrow(fd) > 0) {
+    expect_true(all(c("scenario_label", "factor", "contribution", "total_pnl") %in% names(fd)))
+  }
+})
+
+test_that("propagation has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_scenarios(filters, list(flat = 10, vol = 5, spread = 2))
+  prop <- result$propagation
+  expect_s3_class(prop, "data.frame")
+  expect_true(all(c("factor", "contribution") %in% names(prop)))
+  expect_equal(nrow(prop), 3)
+})
