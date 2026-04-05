@@ -138,3 +138,34 @@ test_that("kpis has 6 rows", {
   expect_true(all(c("title", "value", "delta", "status") %in% names(kpis)))
   expect_true(all(kpis$status %in% c("positive", "warning", "neutral")))
 })
+
+test_that("hedge_cost has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("BRN"), comparison_commodity = "CL",
+                  expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_hedging(filters)
+  hc <- result$hedge_cost
+  expect_s3_class(hc, "data.frame")
+  expect_true(all(c("market", "roll_cost", "basis_risk_cost") %in% names(hc)))
+})
+
+test_that("residual_with_bands has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("BRN"), comparison_commodity = "CL",
+                  expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_hedging(filters)
+  rwb <- result$residual_with_bands
+  expect_s3_class(rwb, "data.frame")
+  expect_true(all(c("date", "market", "residual", "ou_mu",
+                    "band_1_lo", "band_1_hi", "band_2_lo", "band_2_hi") %in% names(rwb)))
+})
+
+test_that("stress_period_comparison has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("BRN"), comparison_commodity = "CL",
+                  expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_hedging(filters)
+  spc <- result$stress_period_comparison
+  expect_s3_class(spc, "data.frame")
+  expect_true(all(c("market", "r2_normal", "r2_stress") %in% names(spc)))
+})

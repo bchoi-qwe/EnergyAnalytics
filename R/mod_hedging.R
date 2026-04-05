@@ -167,6 +167,10 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
       palette <- ea_market_palette()
       fig <- plotly::plot_ly()
 
+      if (nrow(rb) == 0L) {
+        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Hedge Ratio"))
+      }
+
       for (mkt in unique(rb$market)) {
         df <- rb[rb$market == mkt, , drop = FALSE]
         col <- if (!is.null(palette[[mkt]])) unname(palette[[mkt]]) else "#9aa6b2"
@@ -180,7 +184,13 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
             x = df$date,
             ymin = band_lo,
             ymax = band_hi,
-            fillcolor = paste0(sub("^#", "rgba(", col), ",0.12)"),
+            fillcolor = {
+              hex <- sub("^#", "", col)
+              r <- strtoi(substr(hex, 1, 2), 16L)
+              g <- strtoi(substr(hex, 3, 4), 16L)
+              b <- strtoi(substr(hex, 5, 6), 16L)
+              paste0("rgba(", r, ",", g, ",", b, ",0.12)")
+            },
             line = list(width = 0),
             showlegend = FALSE,
             hoverinfo = "skip",
@@ -203,6 +213,10 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
       rb <- page_data()$rolling_beta
       palette <- ea_market_palette()
       fig <- plotly::plot_ly()
+
+      if (nrow(rb) == 0L) {
+        return(ea_plotly_layout(fig, x_title = NULL, y_title = "R\u00b2"))
+      }
 
       for (mkt in unique(rb$market)) {
         df <- rb[rb$market == mkt, , drop = FALSE]
@@ -339,6 +353,10 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
         dplyr::filter(!is.na(.data$beta))
       palette <- ea_market_palette()
       fig <- plotly::plot_ly()
+
+      if (nrow(ptr) == 0L) {
+        return(ea_plotly_layout(fig, x_title = "Contract Tenor", y_title = "Hedge Ratio"))
+      }
 
       for (mkt in unique(ptr$market)) {
         df <- ptr[ptr$market == mkt, , drop = FALSE] |> dplyr::arrange(.data$tenor)

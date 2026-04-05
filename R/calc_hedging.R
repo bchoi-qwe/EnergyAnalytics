@@ -65,7 +65,7 @@ ea_calc_hedging <- function(filters) {
       ~ {
         if (length(.x) < 10) return(NA_real_)
         fit <- stats::lm(.x ~ .y)
-        summary(fit)$r.squared
+        broom::glance(fit)$r.squared
       },
       .before = window - 1L, .complete = TRUE
     )
@@ -182,7 +182,7 @@ ea_calc_hedging <- function(filters) {
       tibble::tibble(
         market = mkt, tenor = tn,
         beta = stats::coef(fit)[[2]],
-        r_squared = summary(fit)$r.squared
+        r_squared = broom::glance(fit)$r.squared
       )
     })
   })
@@ -226,7 +226,7 @@ ea_calc_hedging <- function(filters) {
   # --- stress_period_comparison: normal vs high-vol period R-squared ---
   stress_period_comparison <- tryCatch({
     vol_series <- returns_wide[[benchmark]]
-    roll_vol <- slider::slide_dbl(vol_series, stats::sd, .before = 19L, .complete = TRUE)
+    roll_vol <- slider::slide_dbl(vol_series, ~ stats::sd(.x, na.rm = TRUE), .before = 19L, .complete = TRUE)
     is_stress <- roll_vol > stats::quantile(roll_vol, 0.75, na.rm = TRUE)
 
     purrr::map_dfr(targets, function(mkt) {
