@@ -27,7 +27,7 @@ mod_scenarios_server <- function(id, filters, data_timestamp) {
       title = "Scenario analysis notes"
     )
 
-    # Preset observer — use presets from calc layer
+    # Preset observer \u2014 use presets from calc layer
     shiny::observe({
       presets <- scenario_data()$presets
       for (i in seq_len(nrow(presets))) {
@@ -89,7 +89,7 @@ mod_scenarios_server <- function(id, filters, data_timestamp) {
         # Row 3: Historical Analogs | Stress Table
         bslib::layout_columns(
           col_widths = c(7, 5),
-          ea_plotly_card("Historical Analogs", "3 most similar prior periods — forward path replay.", ns("historical_analog"), height = "340px"),
+          ea_plotly_card("Historical Analogs", "3 most similar prior periods \u2014 forward path replay.", ns("historical_analog"), height = "340px"),
           ea_plotly_card("Stress VaR", "Normal vs stress correlation regime.", ns("stress_var"), height = "340px")
         ),
         mod_footer_notes_ui(ns("footer_notes"))

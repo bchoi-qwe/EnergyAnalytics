@@ -30,8 +30,6 @@ Imports:
     htmltools,
     jsonlite,
     lubridate,
-    moments,
-    PerformanceAnalytics,
     plotly,
     purrr,
     reactable,
@@ -47,13 +45,16 @@ Imports:
     tibble,
     tidyr,
     tidyquant,
-    tseries
+    zoo
 LinkingTo:
     Rcpp
 Suggests:
     devtools,
+    moments,
+    PerformanceAnalytics,
     pkgload,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    tseries
 Remotes:
     risktoollib/RTL@5f0749d7b8cadb5155c1bf613250fe795e078209
 Config/testthat/edition: 3

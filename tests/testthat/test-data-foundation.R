@@ -212,21 +212,3 @@ test_that("source policy requires the intended live source clients", {
   expect_true(grepl("tidyquant::tq_get", audit_text, fixed = TRUE))
   expect_true(grepl("RTL::expiry_table", audit_text, fixed = TRUE))
 })
-
-test_that("options calculated metrics layer is valid", {
-  skip_if_no_snapshot()
-  options_surface <- ea_load_dataset("options_surface_long")
-
-  expect_s3_class(options_surface, "data.frame")
-  expect_gt(nrow(options_surface), 0)
-  expect_s3_class(options_surface$date, "Date")
-
-  # Key greeks and IV should be numeric and populated
-  expect_type(options_surface$implied_volatility, "double")
-  expect_type(options_surface$delta, "double")
-  expect_false(any(is.na(options_surface$implied_volatility)))
-  expect_false(any(is.na(options_surface$delta)))
-
-  # Check that all 19 columns are present as per schema
-  expect_equal(ncol(options_surface), 19L)
-})

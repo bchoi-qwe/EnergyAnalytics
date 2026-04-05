@@ -50,6 +50,13 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 artifacts/
+
+# Compiled object files (Rcpp)
+src/*.o
+src/*.so
+src/*.dll
+
+# renv
 renv/library/
 renv/local/
 renv/python/

@@ -1,7 +1,7 @@
 {
-  "snapshot_id": "20260330T003711Z",
+  "snapshot_id": "20260403T181313Z",
   "schema_version": "0.1.0",
-  "built_at_utc": "2026-03-30T00:37:44Z",
+  "built_at_utc": "2026-04-03T18:13:42Z",
   "sources": [
     {
       "name": "RTL",
@@ -55,30 +55,39 @@
     },
     "ust_curve_long": {
       "file": "ust_curve_long.feather",
-      "rows": 28127,
+      "rows": 28171,
       "columns": 12,
       "min_date": "2016-01-04",
-      "max_date": "2026-03-26",
-      "sha256": "0dbe2ee2e6757883072c8130cfaf37a8f2e37de9cbd9ec9219854476780c3d42",
-      "bytes": 747458
+      "max_date": "2026-04-01",
+      "sha256": "9f89dddc44be63a18f6d0c79ceb93610ee0b8e652f32ba0a2736283ebd84d5fe",
+      "bytes": 748674
     },
     "eia_stocks_long": {
       "file": "eia_stocks_long.feather",
-      "rows": 6152,
+      "rows": 6156,
       "columns": 11,
       "min_date": "1982-08-20",
-      "max_date": "2026-03-20",
-      "sha256": "ca752c242796ed40458678612fcc8edc39e84a2a22b4370c1efc4a04e216c56b",
-      "bytes": 162090
+      "max_date": "2026-03-27",
+      "sha256": "50cd5383aa4d26f7566c2030639dd7eb24499e0c2fa73b29cbee06770098ebc2",
+      "bytes": 162266
     },
     "eia_storage_capacity_long": {
       "file": "eia_storage_capacity_long.feather",
-      "rows": 318,
+      "rows": 319,
       "columns": 11,
       "min_date": "1982-01-01",
-      "max_date": "2025-12-01",
-      "sha256": "f3dd1584e623a429b734a921b5bf292d59acc5d9a218529900f60371eb934f21",
-      "bytes": 10802
+      "max_date": "2026-01-01",
+      "sha256": "e20eb1ab512bab938d86671df1825b28fd7b374cba7b887ec18e839e7edb2778",
+      "bytes": 10826
+    },
+    "options_surface_long": {
+      "file": "options_surface_long.feather",
+      "rows": 4,
+      "columns": 19,
+      "min_date": "2026-03-26",
+      "max_date": "2026-03-26",
+      "sha256": "022a039f434dd291df4c394ec57ed714473c76bc90deea066f41a179fcf2b62d",
+      "bytes": 4162
     }
   }
 }

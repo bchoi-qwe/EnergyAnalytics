@@ -374,8 +374,7 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
                line = list(color = "#d2a157", width = 1, dash = "dash"))
         ))
 
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Residual",
-                       title = first_pair)
+      ea_plotly_layout(fig, x_title = NULL, y_title = "Residual")
     })
   })
 }

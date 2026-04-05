@@ -353,11 +353,11 @@ ea_calc_scenarios <- function(filters, shocks = list(flat = 0, vol = 0, spread =
   # --- presets: scenario preset table ---
   presets <- tibble::tribble(
     ~id, ~title, ~description, ~flat, ~vol, ~spread,
-    "supply_squeeze", "Supply Squeeze", "Sudden supply disruption — bullish flat price shock.", 15, 5, 2,
-    "demand_collapse", "Demand Collapse", "Economic recession scenario — bearish flat price.", -20, 8, -3,
-    "vol_spike", "Vol Spike", "Heightened uncertainty — vol shock only.", 0, 15, 0,
-    "treasury_bear", "Treasury Bear Steepener", "Rising long rates — mild price pressure, spread widening.", -5, 3, 2,
-    "opec_action", "OPEC Action", "Supply cut — significant bullish flat price.", 20, 4, 1,
+    "supply_squeeze", "Supply Squeeze", "Sudden supply disruption \u2014 bullish flat price shock.", 15, 5, 2,
+    "demand_collapse", "Demand Collapse", "Economic recession scenario \u2014 bearish flat price.", -20, 8, -3,
+    "vol_spike", "Vol Spike", "Heightened uncertainty \u2014 vol shock only.", 0, 15, 0,
+    "treasury_bear", "Treasury Bear Steepener", "Rising long rates \u2014 mild price pressure, spread widening.", -5, 3, 2,
+    "opec_action", "OPEC Action", "Supply cut \u2014 significant bullish flat price.", 20, 4, 1,
     "demand_recession", "Demand Recession", "Broad commodity selloff.", -25, 10, -5
   )
 
