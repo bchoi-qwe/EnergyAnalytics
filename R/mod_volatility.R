@@ -326,7 +326,8 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
         return(ea_plotly_layout(plotly::plot_ly(), x_title = "Market", y_title = "Tenor"))
       }
 
-      surface_matrix <- stats::xtabs(realized_vol ~ tenor + market, data = vts)
+      vts_dedup <- dplyr::distinct(vts, .data$market, .data$tenor, .keep_all = TRUE)
+      surface_matrix <- stats::xtabs(realized_vol ~ tenor + market, data = vts_dedup)
 
       fig <- plotly::plot_ly(
         x = colnames(surface_matrix),
@@ -441,7 +442,7 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
       ivr <- page_data()$iv_rv_spread
       fig <- plotly::plot_ly()
 
-      if (nrow(ivr) == 0 || all(is.na(ivr$atm_iv))) {
+      if (nrow(ivr) == 0 || all(is.na(ivr$atm_iv)) || all(is.na(ivr$realized))) {
         return(ea_plotly_layout(fig, x_title = NULL, y_title = "Annualized Vol"))
       }
 

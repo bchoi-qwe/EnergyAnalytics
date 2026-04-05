@@ -107,11 +107,11 @@ ea_calc_volatility <- function(filters) {
       tibble::tibble(
         market = mkt, horizon = h,
         current_vol = current,
-        p10 = stats::quantile(roll_vol, 0.10),
-        p25 = stats::quantile(roll_vol, 0.25),
-        p50 = stats::quantile(roll_vol, 0.50),
-        p75 = stats::quantile(roll_vol, 0.75),
-        p90 = stats::quantile(roll_vol, 0.90)
+        p10 = stats::quantile(roll_vol, 0.10, na.rm = TRUE),
+        p25 = stats::quantile(roll_vol, 0.25, na.rm = TRUE),
+        p50 = stats::quantile(roll_vol, 0.50, na.rm = TRUE),
+        p75 = stats::quantile(roll_vol, 0.75, na.rm = TRUE),
+        p90 = stats::quantile(roll_vol, 0.90, na.rm = TRUE)
       )
     })
   })
@@ -143,9 +143,9 @@ ea_calc_volatility <- function(filters) {
       market = mkt,
       current_vol = current,
       min_vol = min(rv_20$realized_vol, na.rm = TRUE),
-      q1 = stats::quantile(rv_20$realized_vol, 0.25),
-      median_vol = stats::median(rv_20$realized_vol),
-      q3 = stats::quantile(rv_20$realized_vol, 0.75),
+      q1 = stats::quantile(rv_20$realized_vol, 0.25, na.rm = TRUE),
+      median_vol = stats::median(rv_20$realized_vol, na.rm = TRUE),
+      q3 = stats::quantile(rv_20$realized_vol, 0.75, na.rm = TRUE),
       max_vol = max(rv_20$realized_vol, na.rm = TRUE),
       percentile = mean(rv_20$realized_vol <= current, na.rm = TRUE)
     )
@@ -159,7 +159,7 @@ ea_calc_volatility <- function(filters) {
 
     current <- rv_20$realized_vol[nrow(rv_20)]
     pct <- mean(rv_20$realized_vol <= current, na.rm = TRUE)
-    recent_trend <- mean(utils::tail(rv_20$realized_vol, 10)) - mean(utils::tail(rv_20$realized_vol, 30))
+    recent_trend <- mean(utils::tail(rv_20$realized_vol, 10), na.rm = TRUE) - mean(utils::tail(rv_20$realized_vol, 30), na.rm = TRUE)
 
     level <- if (pct > 0.75) "Elevated" else if (pct < 0.25) "Low" else "Normal"
     direction <- if (recent_trend > 0.01) "Rising" else if (recent_trend < -0.01) "Falling" else "Stable"
