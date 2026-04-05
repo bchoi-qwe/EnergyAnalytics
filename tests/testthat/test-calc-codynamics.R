@@ -62,3 +62,46 @@ test_that("pca_decomposition has components for each market", {
   expect_true("market" %in% names(pca))
   expect_true(all(c("PC1", "PC2", "PC3") %in% names(pca)))
 })
+
+test_that("ea_calc_codynamics returns new outputs", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "BRN"), comparison_commodity = "NG",
+                  expiry_range = c(1, 12), date_range = NULL, rolling_window = "63D")
+  result <- ea_calc_codynamics(filters)
+  expect_true(all(c("treasury_betas", "connectedness_score", "correlation_breaks",
+                    "coint_residual", "rolling_beta_ts", "kpis", "notes", "assumptions") %in% names(result)))
+})
+
+test_that("correlation_timeseries has CI bands", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "BRN"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_codynamics(filters)
+  ct <- result$correlation_timeseries
+  expect_true(all(c("ci_lo", "ci_hi", "se") %in% names(ct)))
+  if (nrow(ct) > 0) {
+    expect_true(all(ct$ci_lo >= -1, na.rm = TRUE))
+    expect_true(all(ct$ci_hi <= 1, na.rm = TRUE))
+  }
+})
+
+test_that("treasury_betas has Level/Slope/Curvature factors", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "BRN"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_codynamics(filters)
+  tb <- result$treasury_betas
+  expect_s3_class(tb, "data.frame")
+  if (nrow(tb) > 0) {
+    expect_true(all(c("market", "factor", "beta") %in% names(tb)))
+  }
+})
+
+test_that("kpis has 6 rows", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "BRN", "NG"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_codynamics(filters)
+  kpis <- result$kpis
+  expect_s3_class(kpis, "data.frame")
+  expect_equal(nrow(kpis), 6)
+  expect_true(all(c("title", "value", "delta", "status") %in% names(kpis)))
+  expect_true(all(kpis$status %in% c("positive", "warning", "neutral")))
+})

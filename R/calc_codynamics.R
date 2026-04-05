@@ -104,7 +104,7 @@ ea_calc_codynamics <- function(filters) {
     dplyr::summarise(
       current = dplyr::last(.data$value),
       mean = mean(.data$value, na.rm = TRUE),
-      std = sd(.data$value, na.rm = TRUE),
+      std = stats::sd(.data$value, na.rm = TRUE),
       .groups = "drop"
     ) |>
     dplyr::mutate(zscore = (.data$current - .data$mean) / .data$std)
@@ -147,12 +147,228 @@ ea_calc_codynamics <- function(filters) {
     tibble::tibble(market = market_cols, PC1 = NA_real_, PC2 = NA_real_, PC3 = NA_real_)
   })
 
+  # Add SE bands to correlation_timeseries
+  window_n <- window  # numeric scalar; avoids name clash with the 'window' column
+  correlation_timeseries <- correlation_timeseries |>
+    dplyr::mutate(
+      se = sqrt((1 - .data$correlation^2) / pmax(window_n - 2, 1)),
+      ci_lo = pmax(.data$correlation - 2 * .data$se, -1),
+      ci_hi = pmin(.data$correlation + 2 * .data$se, 1)
+    )
+
+  treasury_betas <- tryCatch({
+    ust <- ea_load_dataset("ust_curve_long")
+    ust_wide <- ust |>
+      dplyr::filter(.data$curve_point_num %in% c(2, 5, 10, 30)) |>
+      dplyr::select("date", "curve_point_num", "value") |>
+      tidyr::pivot_wider(names_from = "curve_point_num", values_from = "value") |>
+      dplyr::arrange(.data$date)
+
+    # Get column names that match 2, 5, 10, 30 (may be stored as "2", "5", "10", "30" or as integers)
+    col_names <- setdiff(names(ust_wide), "date")
+    col_2  <- col_names[grepl("^2$", col_names)][1]
+    col_5  <- col_names[grepl("^5$", col_names)][1]
+    col_10 <- col_names[grepl("^10$", col_names)][1]
+    col_30 <- col_names[grepl("^30$", col_names)][1]
+
+    if (any(is.na(c(col_2, col_5, col_10, col_30)))) stop("missing UST tenors")
+
+    ust_factors <- ust_wide |>
+      dplyr::mutate(
+        level = (.data[[col_2]] + .data[[col_5]] + .data[[col_10]] + .data[[col_30]]) / 4,
+        slope = .data[[col_10]] - .data[[col_2]],
+        curvature = .data[[col_30]] - .data[[col_2]] - 2 * (.data[[col_10]] - .data[[col_2]])
+      ) |>
+      dplyr::arrange(.data$date) |>
+      dplyr::mutate(
+        level_chg    = .data$level    - dplyr::lag(.data$level),
+        slope_chg    = .data$slope    - dplyr::lag(.data$slope),
+        curvature_chg = .data$curvature - dplyr::lag(.data$curvature)
+      ) |>
+      dplyr::filter(!is.na(.data$level_chg)) |>
+      dplyr::select("date", "level_chg", "slope_chg", "curvature_chg")
+
+    purrr::map_dfr(focus_markets, function(mkt) {
+      mkt_ret <- all_curves |>
+        dplyr::filter(.data$market == mkt) |>
+        dplyr::select("date", "log_return")
+
+      joined <- dplyr::inner_join(mkt_ret, ust_factors, by = "date") |> stats::na.omit()
+      if (nrow(joined) < 30) {
+        return(tibble::tibble(market = mkt, factor = c("Level", "Slope", "Curvature"), beta = NA_real_))
+      }
+
+      fit <- stats::lm(log_return ~ level_chg + slope_chg + curvature_chg, data = joined)
+      coefs <- stats::coef(fit)
+
+      tibble::tibble(
+        market = mkt,
+        factor = c("Level", "Slope", "Curvature"),
+        beta = as.numeric(coefs[c("level_chg", "slope_chg", "curvature_chg")])
+      )
+    })
+  }, error = function(e) {
+    tibble::tibble(market = character(), factor = character(), beta = numeric())
+  })
+
+  connectedness_score <- if (length(market_cols) >= 2) {
+    mean(abs(corr_mat[upper.tri(corr_mat)]), na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+
+  correlation_breaks <- correlation_timeseries |>
+    dplyr::group_by(.data$pair) |>
+    dplyr::mutate(
+      lagged_corr = dplyr::lag(.data$correlation, 20L),
+      corr_delta = .data$correlation - .data$lagged_corr
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::filter(!is.na(.data$corr_delta))
+
+  coint_residual <- tryCatch({
+    pair_combos <- utils::combn(focus_markets, 2, simplify = FALSE)
+    purrr::map_dfr(pair_combos, function(pr) {
+      prices_wide <- all_curves |>
+        dplyr::filter(.data$market %in% pr) |>
+        dplyr::select("date", "market", "value") |>
+        tidyr::pivot_wider(names_from = "market", values_from = "value") |>
+        dplyr::arrange(.data$date) |>
+        stats::na.omit()
+
+      if (nrow(prices_wide) < 60 || !all(pr %in% names(prices_wide))) return(tibble::tibble())
+
+      fit <- stats::lm(prices_wide[[pr[2]]] ~ prices_wide[[pr[1]]])
+      resid_vec <- stats::residuals(fit)
+
+      ou <- tryCatch(RTL::fitOU(spread = resid_vec), error = function(e) NULL)
+      if (is.null(ou)) return(tibble::tibble())
+
+      tibble::tibble(
+        date = prices_wide$date,
+        pair = paste(pr[1], "vs", pr[2]),
+        residual = resid_vec,
+        ou_mu = ou$mu,
+        ou_sigma = ou$sigma,
+        band_1_lo = ou$mu - ou$sigma,
+        band_1_hi = ou$mu + ou$sigma,
+        band_2_lo = ou$mu - 2 * ou$sigma,
+        band_2_hi = ou$mu + 2 * ou$sigma
+      )
+    })
+  }, error = function(e) {
+    tibble::tibble(date = as.Date(character()), pair = character(), residual = numeric(),
+                   ou_mu = numeric(), ou_sigma = numeric(),
+                   band_1_lo = numeric(), band_1_hi = numeric(),
+                   band_2_lo = numeric(), band_2_hi = numeric())
+  })
+
+  rolling_beta_ts <- purrr::map_dfr(pairs, function(pr) {
+    x <- returns_wide[[pr[1]]]
+    y <- returns_wide[[pr[2]]]
+    roll_beta <- slider::slide2_dbl(
+      y, x,
+      ~ { if (length(.x) < 10) return(NA_real_); stats::coef(stats::lm(.x ~ .y))[[2]] },
+      .before = window - 1L, .complete = TRUE
+    )
+    tibble::tibble(date = returns_wide$date, pair = paste(pr[1], "vs", pr[2]), beta = roll_beta) |>
+      dplyr::filter(!is.na(.data$beta))
+  })
+
+  # Compute KPIs
+  primary <- focus_markets[1]
+
+  # Biggest correlation change
+  biggest_break <- if (nrow(correlation_breaks) > 0) {
+    correlation_breaks |>
+      dplyr::filter(.data$date == max(.data$date)) |>
+      dplyr::slice_max(abs(.data$corr_delta), n = 1)
+  } else {
+    tibble::tibble(pair = "N/A", corr_delta = NA_real_)
+  }
+
+  # Spread with highest abs z-score
+  top_spread <- if (nrow(spread_zscore) > 0) {
+    spread_zscore |> dplyr::slice_max(abs(.data$zscore), n = 1)
+  } else {
+    tibble::tibble(spread_label = "N/A", zscore = NA_real_)
+  }
+
+  # CL-BRN correlation
+  cl_brn_corr <- correlation_matrix |>
+    dplyr::filter(.data$market_x == "CL", .data$market_y == "BRN") |>
+    dplyr::pull(.data$correlation)
+  cl_brn_corr <- if (length(cl_brn_corr) > 0) cl_brn_corr[1] else NA_real_
+
+  # CL-NG correlation
+  cl_ng_corr <- correlation_matrix |>
+    dplyr::filter((.data$market_x == "CL" & .data$market_y == "NG") |
+                  (.data$market_x == "NG" & .data$market_y == "CL")) |>
+    dplyr::pull(.data$correlation)
+  cl_ng_corr <- if (length(cl_ng_corr) > 0) cl_ng_corr[1] else NA_real_
+
+  # CL-RB crack spread
+  cl_rb_spread <- spread_zscore |>
+    dplyr::filter(grepl("RB", .data$spread_label) | grepl("Crack", .data$spread_label)) |>
+    dplyr::slice(1)
+  crack_val <- if (nrow(cl_rb_spread) > 0) cl_rb_spread$current[1] else NA_real_
+
+  kpis <- tibble::tribble(
+    ~title, ~value, ~delta, ~status,
+    "CL-BRN Corr",
+    if (!is.na(cl_brn_corr)) scales::number(cl_brn_corr, accuracy = 0.01) else "N/A",
+    paste0(window, "d rolling"),
+    if (!is.na(cl_brn_corr) && cl_brn_corr > 0.8) "positive" else if (!is.na(cl_brn_corr) && cl_brn_corr < 0.5) "warning" else "neutral",
+
+    "Crack Spread",
+    if (!is.na(crack_val)) scales::number(crack_val, accuracy = 0.01) else "N/A",
+    "CL-RB", "neutral",
+
+    "CL-NG Corr",
+    if (!is.na(cl_ng_corr)) scales::number(cl_ng_corr, accuracy = 0.01) else "N/A",
+    paste0(window, "d rolling"),
+    if (!is.na(cl_ng_corr) && abs(cl_ng_corr) < 0.3) "warning" else "neutral",
+
+    "Connectedness",
+    if (!is.na(connectedness_score)) scales::number(connectedness_score, accuracy = 0.01) else "N/A",
+    "mean abs corr", "neutral",
+
+    "Largest Corr Break",
+    if (!is.na(biggest_break$corr_delta[1])) scales::number(biggest_break$corr_delta[1], accuracy = 0.01) else "N/A",
+    if (nrow(biggest_break) > 0) biggest_break$pair[1] else "",
+    if (!is.na(biggest_break$corr_delta[1]) && abs(biggest_break$corr_delta[1]) > 0.2) "warning" else "neutral",
+
+    "Spread Outlier",
+    if (!is.na(top_spread$zscore[1])) scales::number(top_spread$zscore[1], accuracy = 0.1) else "N/A",
+    top_spread$spread_label[1],
+    if (!is.na(top_spread$zscore[1]) && abs(top_spread$zscore[1]) > 2) "warning" else "neutral"
+  )
+
+  notes <- c(
+    "Rolling correlations computed using a sliding window on front-month log returns.",
+    "Treasury factor betas from OLS regression of commodity returns on UST level/slope/curvature changes.",
+    "Cointegration residuals modelled with Ornstein-Uhlenbeck process via RTL::fitOU."
+  )
+  assumptions <- c(
+    paste0("Rolling window: ", window, " trading days."),
+    "Spreads computed as price of first leg minus second leg (front month).",
+    "Connectedness score = mean absolute pairwise correlation across all selected markets."
+  )
+
   list(
     correlation_matrix = correlation_matrix,
     correlation_timeseries = correlation_timeseries,
     spread_timeseries = spread_timeseries,
     spread_zscore = spread_zscore,
     beta_matrix = beta_matrix,
-    pca_decomposition = pca_decomposition
+    pca_decomposition = pca_decomposition,
+    treasury_betas = treasury_betas,
+    connectedness_score = connectedness_score,
+    correlation_breaks = correlation_breaks,
+    coint_residual = coint_residual,
+    rolling_beta_ts = rolling_beta_ts,
+    kpis = kpis,
+    notes = notes,
+    assumptions = assumptions
   )
 }
