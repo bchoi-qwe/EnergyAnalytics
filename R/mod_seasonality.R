@@ -150,6 +150,7 @@ mod_seasonality_server <- function(id, filters, data_timestamp) {
         ) |>
         dplyr::group_by(.data$year, .data$month_abbr) |>
         dplyr::summarise(avg_index = mean(.data$indexed_value, na.rm = TRUE), .groups = "drop")
+      if (nrow(df) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = NULL, y_title = NULL))
       mat <- stats::xtabs(avg_index ~ year + month_abbr, data = df)
       # reorder columns by calendar month
       col_order <- month.abb[month.abb %in% colnames(mat)]

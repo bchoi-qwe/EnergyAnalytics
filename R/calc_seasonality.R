@@ -106,7 +106,7 @@ ea_calc_seasonality <- function(filters) {
     dplyr::rowwise() |>
     dplyr::mutate(
       percentile = if (length(.data$values) > 0) {
-        mean(.data$values <= .data$current_val)
+        mean(.data$values <= .data$current_val, na.rm = TRUE)
       } else {
         NA_real_
       }
@@ -148,7 +148,7 @@ ea_calc_seasonality <- function(filters) {
       mkt_wide <- curves |>
         dplyr::filter(.data$market == mkt, .data$curve_point_num %in% c(1L, 2L)) |>
         dplyr::select(.data$date, .data$curve_point_num, .data$value) |>
-        tidyr::pivot_wider(names_from = "curve_point_num", values_from = "value") |>
+        tidyr::pivot_wider(names_from = .data$curve_point_num, values_from = .data$value) |>
         dplyr::arrange(.data$date) |>
         dplyr::filter(!is.na(.data$`1`), !is.na(.data$`2`)) |>
         dplyr::mutate(
@@ -228,7 +228,7 @@ ea_calc_seasonality <- function(filters) {
       dplyr::ungroup() |>
       dplyr::filter(!is.na(.data$log_return)) |>
       dplyr::select("date", "market", "log_return") |>
-      tidyr::pivot_wider(names_from = "market", values_from = "log_return") |>
+      tidyr::pivot_wider(names_from = .data$market, values_from = .data$log_return) |>
       dplyr::arrange(.data$date) |>
       stats::na.omit()
     if (ncol(wide_returns) < 3) stop("need at least 2 market columns")
