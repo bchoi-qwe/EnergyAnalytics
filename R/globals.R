@@ -185,5 +185,16 @@ utils::globalVariables(c(
   "rolling_beta_ts",
   "se",
   "slope_chg",
-  "treasury_betas"
+  "treasury_betas",
+  "otm_put_iv",
+  "skew_ratio",
+  "pnl",
+  "premium_new",
+  "F_new",
+  "sigma_new",
+  "tenor_bucket",
+  "delta",
+  "color",
+  "ultima",
+  "rho"
 ))

@@ -329,6 +329,74 @@ ea_calc_surface_greeks <- function(filters) {
   primary_atm <- full_grid |>
     dplyr::filter(.data$market == primary, abs(.data$moneyness - 1.0) < 0.01)
 
+  greeks_concentration <- full_grid |>
+    dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
+    dplyr::mutate(
+      tenor_bucket = dplyr::case_when(
+        .data$curve_point_num <= 1 ~ "Prompt",
+        .data$curve_point_num <= 3 ~ "3M",
+        .data$curve_point_num <= 6 ~ "6M",
+        .data$curve_point_num <= 12 ~ "12M",
+        TRUE ~ "Deferred"
+      )
+    ) |>
+    dplyr::group_by(.data$market, .data$label, .data$tenor_bucket) |>
+    dplyr::summarise(
+      delta = mean(.data$delta, na.rm = TRUE),
+      gamma = sum(.data$gamma, na.rm = TRUE),
+      vega = sum(.data$vega, na.rm = TRUE),
+      theta = sum(.data$theta, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  pnl_grid <- {
+    primary_atm_row <- full_grid |>
+      dplyr::filter(.data$market == primary, abs(.data$moneyness - 1.0) < 0.01) |>
+      dplyr::filter(.data$curve_point_num == min(.data$curve_point_num))
+
+    if (nrow(primary_atm_row) == 0) {
+      tibble::tibble(spot_shock = numeric(), vol_shock = numeric(), pnl = numeric())
+    } else {
+      F0 <- primary_atm_row$forward[1]
+      K  <- primary_atm_row$strike[1]
+      r  <- primary_atm_row$risk_free[1]
+      T_y <- primary_atm_row$T_years[1]
+      sigma0 <- primary_atm_row$iv[1]
+      base_premium <- primary_atm_row$premium[1]
+
+      spot_shocks <- seq(-0.10, 0.10, by = 0.02)
+      vol_shocks  <- seq(-0.05, 0.05, by = 0.01)
+
+      expand.grid(spot_shock = spot_shocks, vol_shock = vol_shocks) |>
+        tibble::as_tibble() |>
+        dplyr::mutate(
+          F_new = F0 * (1 + .data$spot_shock),
+          sigma_new = pmax(sigma0 + .data$vol_shock, 0.01),
+          premium_new = {
+            g <- black76_greeks_vectorised(
+              .data$F_new, rep(K, dplyr::n()), rep(r, dplyr::n()),
+              rep(T_y, dplyr::n()), .data$sigma_new, rep(TRUE, dplyr::n())
+            )
+            g$premium
+          },
+          pnl = .data$premium_new - base_premium
+        ) |>
+        dplyr::select("spot_shock", "vol_shock", "pnl")
+    }
+  }
+
+  skew_ratio <- full_grid |>
+    dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
+    dplyr::select(.data$market, .data$curve_point_num, atm_iv = .data$iv) |>
+    dplyr::left_join(
+      full_grid |>
+        dplyr::filter(abs(.data$moneyness - 0.95) < 0.01) |>
+        dplyr::select(.data$market, .data$curve_point_num, otm_put_iv = .data$iv),
+      by = c("market", "curve_point_num")
+    ) |>
+    dplyr::mutate(skew_ratio = dplyr::if_else(.data$atm_iv > 0, .data$otm_put_iv / .data$atm_iv, NA_real_)) |>
+    dplyr::select(.data$market, .data$curve_point_num, .data$atm_iv, .data$otm_put_iv, .data$skew_ratio)
+
   kpis <- tibble::tribble(
     ~title, ~value, ~delta, ~icon, ~status,
     "ATM Delta",
@@ -355,6 +423,9 @@ ea_calc_surface_greeks <- function(filters) {
     term_greeks = term_greeks,
     strike_profile = strike_profile,
     full_grid = full_grid,
+    greeks_concentration = greeks_concentration,
+    pnl_grid = pnl_grid,
+    skew_ratio = skew_ratio,
     notes = c(
       "Greeks computed using the Black-76 futures options model via the Rcpp C++ engine.",
       "Implied vol surface is parameterised (sticky-delta skew with term decay) until real exchange vol data is available.",
@@ -424,6 +495,74 @@ ea_greeks_fallback <- function(markets, labels) {
   primary_atm <- full_grid |>
     dplyr::filter(abs(moneyness - 1.0) < 0.01)
 
+  greeks_concentration <- full_grid |>
+    dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
+    dplyr::mutate(
+      tenor_bucket = dplyr::case_when(
+        .data$curve_point_num <= 1 ~ "Prompt",
+        .data$curve_point_num <= 3 ~ "3M",
+        .data$curve_point_num <= 6 ~ "6M",
+        .data$curve_point_num <= 12 ~ "12M",
+        TRUE ~ "Deferred"
+      )
+    ) |>
+    dplyr::group_by(.data$market, .data$label, .data$tenor_bucket) |>
+    dplyr::summarise(
+      delta = mean(.data$delta, na.rm = TRUE),
+      gamma = sum(.data$gamma, na.rm = TRUE),
+      vega = sum(.data$vega, na.rm = TRUE),
+      theta = sum(.data$theta, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  pnl_grid <- {
+    primary_atm_row <- full_grid |>
+      dplyr::filter(.data$market == primary, abs(.data$moneyness - 1.0) < 0.01) |>
+      dplyr::filter(.data$curve_point_num == min(.data$curve_point_num))
+
+    if (nrow(primary_atm_row) == 0) {
+      tibble::tibble(spot_shock = numeric(), vol_shock = numeric(), pnl = numeric())
+    } else {
+      F0 <- primary_atm_row$forward[1]
+      K  <- primary_atm_row$strike[1]
+      r  <- primary_atm_row$risk_free[1]
+      T_y <- primary_atm_row$T_years[1]
+      sigma0 <- primary_atm_row$iv[1]
+      base_premium <- primary_atm_row$premium[1]
+
+      spot_shocks <- seq(-0.10, 0.10, by = 0.02)
+      vol_shocks  <- seq(-0.05, 0.05, by = 0.01)
+
+      expand.grid(spot_shock = spot_shocks, vol_shock = vol_shocks) |>
+        tibble::as_tibble() |>
+        dplyr::mutate(
+          F_new = F0 * (1 + .data$spot_shock),
+          sigma_new = pmax(sigma0 + .data$vol_shock, 0.01),
+          premium_new = {
+            g <- black76_greeks_vectorised(
+              .data$F_new, rep(K, dplyr::n()), rep(r, dplyr::n()),
+              rep(T_y, dplyr::n()), .data$sigma_new, rep(TRUE, dplyr::n())
+            )
+            g$premium
+          },
+          pnl = .data$premium_new - base_premium
+        ) |>
+        dplyr::select("spot_shock", "vol_shock", "pnl")
+    }
+  }
+
+  skew_ratio <- full_grid |>
+    dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
+    dplyr::select(.data$market, .data$curve_point_num, atm_iv = .data$iv) |>
+    dplyr::left_join(
+      full_grid |>
+        dplyr::filter(abs(.data$moneyness - 0.95) < 0.01) |>
+        dplyr::select(.data$market, .data$curve_point_num, otm_put_iv = .data$iv),
+      by = c("market", "curve_point_num")
+    ) |>
+    dplyr::mutate(skew_ratio = dplyr::if_else(.data$atm_iv > 0, .data$otm_put_iv / .data$atm_iv, NA_real_)) |>
+    dplyr::select(.data$market, .data$curve_point_num, .data$atm_iv, .data$otm_put_iv, .data$skew_ratio)
+
   kpis <- tibble::tribble(
     ~title, ~value, ~delta, ~icon, ~status,
     "ATM Delta",
@@ -447,6 +586,9 @@ ea_greeks_fallback <- function(markets, labels) {
     term_greeks = term_greeks,
     strike_profile = strike_profile,
     full_grid = full_grid,
+    greeks_concentration = greeks_concentration,
+    pnl_grid = pnl_grid,
+    skew_ratio = skew_ratio,
     notes = c(
       "Greeks computed using Black-76 with fallback parameterised data (snapshot not available).",
       "Connect to the live data snapshot for production-grade outputs."
