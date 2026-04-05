@@ -112,6 +112,10 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
 
       fig <- plotly::plot_ly()
 
+      if (nrow(ct) == 0L) {
+        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Correlation"))
+      }
+
       for (i in seq_along(unique(ct$pair))) {
         pair_name <- unique(ct$pair)[[i]]
         df <- ct[ct$pair == pair_name, , drop = FALSE]
@@ -148,6 +152,9 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
     # ---- Correlation Matrix Heatmap ----
     output$corr_heatmap <- plotly::renderPlotly({
       cm <- page_data()$correlation_matrix
+      if (nrow(cm) == 0L) {
+        return(ea_plotly_layout(plotly::plot_ly(), x_title = NULL, y_title = NULL))
+      }
       dep_matrix <- stats::xtabs(correlation ~ market_y + market_x, data = cm)
 
       fig <- plotly::plot_ly(
@@ -170,6 +177,10 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
       pc_colors <- c("#4da3a3", "#5a85c8", "#d2a157")
 
       fig <- plotly::plot_ly()
+
+      if (nrow(pca) == 0L || all(is.na(pca$PC1))) {
+        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Loading"))
+      }
 
       for (i in seq_len(3)) {
         pc_col <- paste0("PC", i)

@@ -102,7 +102,7 @@ ea_calc_codynamics <- function(filters) {
   spread_zscore <- spread_timeseries |>
     dplyr::group_by(.data$spread_label) |>
     dplyr::summarise(
-      current = dplyr::last(.data$value),
+      current = dplyr::last(stats::na.omit(.data$value)),
       mean = mean(.data$value, na.rm = TRUE),
       std = stats::sd(.data$value, na.rm = TRUE),
       .groups = "drop"
