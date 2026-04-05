@@ -189,6 +189,8 @@ utils::globalVariables(c(
   "otm_put_iv",
   "skew_ratio",
   "pnl",
+  "spot_shock",
+  "vol_shock",
   "premium_new",
   "F_new",
   "sigma_new",
