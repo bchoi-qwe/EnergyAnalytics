@@ -230,5 +230,11 @@ utils::globalVariables(c(
   "terminal_return",
   "mean_return",
   "sd_return",
-  "pair_label"
+  "pair_label",
+  "crack_value",
+  "yield",
+  "commodity_chg",
+  "rate_chg",
+  "release_date",
+  "day_of_week"
 ))

@@ -71,3 +71,53 @@ test_that("stocks_deviation computes surplus/deficit", {
   expect_s3_class(sd_df, "data.frame")
   expect_true(all(c("date", "product", "deviation", "deviation_pct") %in% names(sd_df)))
 })
+
+test_that("ea_calc_fundamentals returns new outputs", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "RB"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_fundamentals(filters)
+  expect_true(all(c(
+    "crack_spreads", "treasury_snapshot", "commodity_rate_scatter",
+    "release_calendar", "kpis", "notes", "assumptions"
+  ) %in% names(result)))
+})
+
+test_that("crack_spreads has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "RB", "HO"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_fundamentals(filters)
+  cs <- result$crack_spreads
+  expect_s3_class(cs, "data.frame")
+  expect_true(all(c("date", "spread_label", "crack_value") %in% names(cs)))
+})
+
+test_that("treasury_snapshot has current and historical curves", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_fundamentals(filters)
+  ts <- result$treasury_snapshot
+  expect_s3_class(ts, "data.frame")
+  expect_true(all(c("curve_point_num", "yield", "snapshot_label") %in% names(ts)))
+  expect_true("current" %in% ts$snapshot_label)
+})
+
+test_that("release_calendar has upcoming EIA releases", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_fundamentals(filters)
+  rc <- result$release_calendar
+  expect_s3_class(rc, "data.frame")
+  expect_true(all(c("release_date", "event", "day_of_week") %in% names(rc)))
+  expect_gt(nrow(rc), 0)
+})
+
+test_that("kpis has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "RB"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_fundamentals(filters)
+  kpis <- result$kpis
+  expect_s3_class(kpis, "data.frame")
+  expect_true(all(c("title", "value", "delta", "status") %in% names(kpis)))
+  expect_gt(nrow(kpis), 0)
+  expect_true(all(kpis$status %in% c("positive", "warning", "neutral")))
+})
