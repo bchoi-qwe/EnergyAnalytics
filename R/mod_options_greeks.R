@@ -116,8 +116,10 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
     # ---- Delta-Gamma Surface heatmap ----
     output$delta_gamma_surface <- plotly::renderPlotly({
       fg <- page_data()$full_grid
+      if (nrow(fg) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = "Moneyness", y_title = "Contract month"))
       primary <- fg$market[1]
       df <- fg |> dplyr::filter(.data$market == primary)
+      if (nrow(df) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = "Moneyness", y_title = "Contract month"))
       mat <- stats::xtabs(gamma ~ curve_point_num + moneyness, data = df)
       fig <- plotly::plot_ly(
         x = colnames(mat), y = rownames(mat), z = unclass(mat),
@@ -131,8 +133,10 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
     # ---- Vega-Theta Surface heatmap ----
     output$vega_theta_surface <- plotly::renderPlotly({
       fg <- page_data()$full_grid
+      if (nrow(fg) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = "Moneyness", y_title = "Contract month"))
       primary <- fg$market[1]
       df <- fg |> dplyr::filter(.data$market == primary)
+      if (nrow(df) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = "Moneyness", y_title = "Contract month"))
       mat <- stats::xtabs(vega ~ curve_point_num + moneyness, data = df)
       fig <- plotly::plot_ly(
         x = colnames(mat), y = rownames(mat), z = unclass(mat),
@@ -194,6 +198,7 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
     # ---- Vanna heatmap ----
     output$greeks_vanna <- plotly::renderPlotly({
       chart_data <- page_data()$cross_greeks_vanna
+      if (nrow(chart_data) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = "Moneyness", y_title = "Contract month"))
       vanna_matrix <- stats::xtabs(vanna ~ curve_point_num + moneyness, data = chart_data)
 
       fig <- plotly::plot_ly(
@@ -211,6 +216,7 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
     # ---- Charm heatmap ----
     output$greeks_charm <- plotly::renderPlotly({
       chart_data <- page_data()$cross_greeks_charm
+      if (nrow(chart_data) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = "Moneyness", y_title = "Contract month"))
       charm_matrix <- stats::xtabs(charm ~ curve_point_num + moneyness, data = chart_data)
 
       fig <- plotly::plot_ly(
@@ -264,6 +270,7 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
     output$greeks_tails <- plotly::renderPlotly({
       chart_data <- page_data()$strike_profile
       fig <- plotly::plot_ly()
+      if (nrow(chart_data) == 0L) return(ea_plotly_layout(fig, x_title = "Moneyness", y_title = "Speed"))
 
       fig <- fig |>
         plotly::add_lines(

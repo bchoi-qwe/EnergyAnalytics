@@ -193,8 +193,8 @@ ea_generate_vol_surface <- function(markets, forwards_df, catalog) {
 
   purrr::map_dfr(markets, function(mkt) {
     mkt_forwards <- forwards_df |>
-      dplyr::filter(market == mkt) |>
-      dplyr::arrange(curve_point_num)
+      dplyr::filter(.data$market == mkt) |>
+      dplyr::arrange(.data$curve_point_num)
 
     if (nrow(mkt_forwards) == 0L) return(tibble::tibble())
 
@@ -258,10 +258,10 @@ ea_calc_surface_greeks <- function(filters) {
   latest_date <- max(commodity_curves$date, na.rm = TRUE)
   forwards_df <- commodity_curves |>
     dplyr::filter(
-      date == latest_date,
-      market %in% markets,
-      curve_point_num >= expiry_lo,
-      curve_point_num <= expiry_hi
+      .data$date == latest_date,
+      .data$market %in% markets,
+      .data$curve_point_num >= expiry_lo,
+      .data$curve_point_num <= expiry_hi
     )
 
   if (nrow(forwards_df) == 0L) {
@@ -310,12 +310,12 @@ ea_calc_surface_greeks <- function(filters) {
   primary <- markets[1]
 
   cross_greeks_vanna <- full_grid |>
-    dplyr::filter(market == primary) |>
-    dplyr::select(curve_point_num, moneyness, vanna)
+    dplyr::filter(.data$market == primary) |>
+    dplyr::select(.data$curve_point_num, .data$moneyness, .data$vanna)
 
   cross_greeks_charm <- full_grid |>
-    dplyr::filter(market == primary) |>
-    dplyr::select(curve_point_num, moneyness, charm)
+    dplyr::filter(.data$market == primary) |>
+    dplyr::select(.data$curve_point_num, .data$moneyness, .data$charm)
 
   term_greeks <- full_grid |>
     dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
@@ -400,7 +400,7 @@ ea_calc_surface_greeks <- function(filters) {
   kpis <- tibble::tribble(
     ~title, ~value, ~delta, ~icon, ~status,
     "ATM Delta",
-    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$delta), accuracy = 0.001) else "N/A",
+    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$delta, na.rm = TRUE), accuracy = 0.001) else "N/A",
     "front contract", "chart-line", "neutral",
 
     "Peak Gamma",
@@ -408,7 +408,7 @@ ea_calc_surface_greeks <- function(filters) {
     "across term structure", "gauge-high", "warning",
 
     "ATM Vega",
-    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$vega), accuracy = 0.01) else "N/A",
+    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$vega, na.rm = TRUE), accuracy = 0.01) else "N/A",
     "per 1 vol point", "wave-square", "accent",
 
     "Surface points",
@@ -476,10 +476,10 @@ ea_greeks_fallback <- function(markets, labels) {
   full_grid <- dplyr::bind_cols(fallback_grid, greeks_result)
 
   cross_greeks_vanna <- full_grid |>
-    dplyr::select(curve_point_num, moneyness, vanna)
+    dplyr::select(.data$curve_point_num, .data$moneyness, .data$vanna)
 
   cross_greeks_charm <- full_grid |>
-    dplyr::select(curve_point_num, moneyness, charm)
+    dplyr::select(.data$curve_point_num, .data$moneyness, .data$charm)
 
   term_greeks <- purrr::map_dfr(markets, function(mkt) {
     full_grid |>
@@ -489,11 +489,11 @@ ea_greeks_fallback <- function(markets, labels) {
   })
 
   strike_profile <- full_grid |>
-    dplyr::filter(curve_point_num == min(curve_point_num)) |>
-    dplyr::select(moneyness, strike, speed, zomma)
+    dplyr::filter(.data$curve_point_num == min(.data$curve_point_num)) |>
+    dplyr::select(.data$moneyness, .data$strike, .data$speed, .data$zomma)
 
   primary_atm <- full_grid |>
-    dplyr::filter(abs(moneyness - 1.0) < 0.01)
+    dplyr::filter(abs(.data$moneyness - 1.0) < 0.01)
 
   greeks_concentration <- full_grid |>
     dplyr::filter(abs(.data$moneyness - 1.0) < 0.01) |>
@@ -566,13 +566,13 @@ ea_greeks_fallback <- function(markets, labels) {
   kpis <- tibble::tribble(
     ~title, ~value, ~delta, ~icon, ~status,
     "ATM Delta",
-    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$delta), accuracy = 0.001) else "N/A",
+    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$delta, na.rm = TRUE), accuracy = 0.001) else "N/A",
     "front contract", "chart-line", "neutral",
     "Peak Gamma",
     if (nrow(primary_atm) > 0L) scales::scientific(max(primary_atm$gamma), digits = 3) else "N/A",
     "across term structure", "gauge-high", "warning",
     "ATM Vega",
-    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$vega), accuracy = 0.01) else "N/A",
+    if (nrow(primary_atm) > 0L) scales::number(mean(primary_atm$vega, na.rm = TRUE), accuracy = 0.01) else "N/A",
     "per 1 vol point", "wave-square", "accent",
     "Surface points",
     scales::comma(nrow(full_grid)),
