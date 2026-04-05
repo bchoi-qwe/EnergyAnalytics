@@ -20,6 +20,7 @@ Depends:
     R (>= 4.3.0)
 Imports:
     arrow,
+    broom,
     bslib,
     cli,
     digest,
@@ -29,6 +30,8 @@ Imports:
     htmltools,
     jsonlite,
     lubridate,
+    moments,
+    PerformanceAnalytics,
     plotly,
     purrr,
     reactable,
@@ -39,10 +42,12 @@ Imports:
     shiny,
     shinycssloaders,
     shinyWidgets,
+    slider,
     stringr,
     tibble,
     tidyr,
-    tidyquant
+    tidyquant,
+    tseries
 LinkingTo:
     Rcpp
 Suggests:
