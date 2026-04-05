@@ -52,6 +52,7 @@ utils::globalVariables(c(
   "change",
   "change_pct",
   "comparison",
+  "corr_delta",
   "corr_normal",
   "corr_stress",
   "correlation",

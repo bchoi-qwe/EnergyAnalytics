@@ -84,14 +84,16 @@ test_that("correlation_timeseries has CI bands", {
   }
 })
 
-test_that("treasury_betas has Level/Slope/Curvature factors", {
+test_that("treasury_betas has correct schema", {
   skip_if_no_snapshot()
   filters <- list(commodities = c("CL", "BRN"), expiry_range = c(1, 12), date_range = NULL)
   result <- ea_calc_codynamics(filters)
   tb <- result$treasury_betas
   expect_s3_class(tb, "data.frame")
+  # Schema must always be correct regardless of whether rows were computed
+  expect_true(all(c("market", "factor", "beta") %in% names(tb)))
   if (nrow(tb) > 0) {
-    expect_true(all(c("market", "factor", "beta") %in% names(tb)))
+    expect_true(all(tb$factor %in% c("Level", "Slope", "Curvature")))
   }
 })
 

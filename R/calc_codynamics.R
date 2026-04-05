@@ -221,10 +221,12 @@ ea_calc_codynamics <- function(filters) {
     dplyr::group_by(.data$pair) |>
     dplyr::mutate(
       lagged_corr = dplyr::lag(.data$correlation, 20L),
-      corr_delta = .data$correlation - .data$lagged_corr
+      corr_delta  = .data$correlation - .data$lagged_corr
     ) |>
+    dplyr::filter(!is.na(.data$corr_delta)) |>
+    dplyr::slice_max(.data$date, n = 1, with_ties = FALSE) |>
     dplyr::ungroup() |>
-    dplyr::filter(!is.na(.data$corr_delta))
+    dplyr::select("pair", "corr_delta")
 
   coint_residual <- tryCatch({
     pair_combos <- utils::combn(focus_markets, 2, simplify = FALSE)
@@ -281,8 +283,7 @@ ea_calc_codynamics <- function(filters) {
   # Biggest correlation change
   biggest_break <- if (nrow(correlation_breaks) > 0) {
     correlation_breaks |>
-      dplyr::filter(.data$date == max(.data$date)) |>
-      dplyr::slice_max(abs(.data$corr_delta), n = 1)
+      dplyr::slice_max(abs(.data$corr_delta), n = 1, with_ties = FALSE)
   } else {
     tibble::tibble(pair = "N/A", corr_delta = NA_real_)
   }
