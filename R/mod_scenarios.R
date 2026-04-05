@@ -163,6 +163,7 @@ mod_scenarios_server <- function(id, filters, data_timestamp) {
       }
       primary_mkt <- ps$market[1]
       df <- ps[ps$market == primary_mkt, , drop = FALSE]
+      if (nrow(df) == 0L) return(ea_plotly_layout(plotly::plot_ly(), x_title = "Days", y_title = "Price"))
       # Compute percentile bands across sims at each t
       bands <- df |>
         dplyr::group_by(.data$t) |>
