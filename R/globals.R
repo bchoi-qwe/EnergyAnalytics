@@ -236,5 +236,18 @@ utils::globalVariables(c(
   "commodity_chg",
   "rate_chg",
   "release_date",
-  "day_of_week"
+  "day_of_week",
+  "chg_1d",
+  "chg_1w",
+  "chg_1m",
+  "pct_1d",
+  "pct_1w",
+  "pct_1m",
+  "percentile_52w",
+  "high_52w",
+  "low_52w",
+  "anomaly_type",
+  "event_date",
+  "event_name",
+  "event_type"
 ))
