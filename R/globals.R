@@ -216,5 +216,19 @@ utils::globalVariables(c(
   "month_abbr",
   "month_num",
   "avg_index",
-  "rv20"
+  "rv20",
+  "analog_id",
+  "cumulative_return",
+  "match_date",
+  "match_corr",
+  "flat_contribution",
+  "vol_contribution",
+  "spread_contribution",
+  "total_pnl",
+  "terminal_price",
+  "initial_price",
+  "terminal_return",
+  "mean_return",
+  "sd_return",
+  "pair_label"
 ))
