@@ -69,3 +69,51 @@ test_that("seasonal_returns has hit rates by month", {
   expect_s3_class(sret, "data.frame")
   expect_true(all(c("market", "period", "avg_return", "hit_rate") %in% names(sret)))
 })
+
+test_that("ea_calc_seasonality returns all expected outputs including new ones", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL", "NG"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_seasonality(filters)
+  expect_true(all(c("stl_decomposition", "seasonal_spreads", "seasonal_vol",
+    "seasonal_hedge_effectiveness", "seasonal_summary", "kpis", "notes", "assumptions") %in% names(result)))
+})
+
+test_that("stl_decomposition has correct schema or is empty", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_seasonality(filters)
+  stl <- result$stl_decomposition
+  expect_s3_class(stl, "data.frame")
+  expect_true(all(c("date", "market", "trend", "seasonal", "remainder") %in% names(stl)))
+})
+
+test_that("seasonal_spreads has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_seasonality(filters)
+  ss <- result$seasonal_spreads
+  expect_s3_class(ss, "data.frame")
+  if (nrow(ss) > 0) {
+    expect_true(all(c("day_of_year", "market", "avg", "p10", "p25", "p75", "p90") %in% names(ss)))
+  }
+})
+
+test_that("kpis has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_seasonality(filters)
+  kpis <- result$kpis
+  expect_s3_class(kpis, "data.frame")
+  expect_true(all(c("title", "value", "delta", "status") %in% names(kpis)))
+  expect_equal(nrow(kpis), 5)
+  expect_true(all(kpis$status %in% c("positive", "warning", "neutral")))
+})
+
+test_that("seasonal_summary has correct schema", {
+  skip_if_no_snapshot()
+  filters <- list(commodities = c("CL"), expiry_range = c(1, 12), date_range = NULL)
+  result <- ea_calc_seasonality(filters)
+  smry <- result$seasonal_summary
+  expect_s3_class(smry, "data.frame")
+  expect_true(all(c("market", "anomaly_score", "current_percentile", "direction", "days_to_inflection") %in% names(smry)))
+})
