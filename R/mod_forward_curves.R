@@ -44,7 +44,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
             title = "Forward Curve Snapshot",
             subtitle = "Current forward curve by listed contract month.",
             output_id = ns("curve_snapshot"),
-            height = "380px"
+            height = "300px"
           ),
           ea_table_card(
             title = "Structure Summary",
@@ -59,13 +59,13 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
             title = "Historical Curve Overlay",
             subtitle = "Today vs 1W/1M/3M ago for the lead product.",
             output_id = ns("curve_history"),
-            height = "350px"
+            height = "270px"
           ),
           ea_plotly_card(
             title = "Curve Shift Heatmap",
             subtitle = "Daily change by tenor over past 60 days.",
             output_id = ns("curve_heatmap"),
-            height = "350px"
+            height = "270px"
           )
         ),
         # Row 3: Calendar Spread Strip (7) | Prompt Spread History (5)
@@ -75,13 +75,13 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
             title = "Calendar Spread Strip",
             subtitle = "Adjacent month spreads with z-score shading.",
             output_id = ns("spread_strip"),
-            height = "330px"
+            height = "260px"
           ),
           ea_plotly_card(
             title = "Prompt Spread History",
             subtitle = "M1-M2 spread with rolling percentile bands.",
             output_id = ns("prompt_spread"),
-            height = "330px"
+            height = "260px"
           )
         ),
         # Row 4: Roll Yield Strip (6) | PCA Factor Decomposition (6)
@@ -91,13 +91,13 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
             title = "Roll Yield Strip",
             subtitle = "Annualized roll yield by adjacent tenor pair.",
             output_id = ns("roll_yield_chart"),
-            height = "330px"
+            height = "260px"
           ),
           ea_plotly_card(
             title = "PCA Factor Decomposition",
             subtitle = "PC1/PC2/PC3 loadings by tenor (log returns).",
             output_id = ns("pca_chart"),
-            height = "330px"
+            height = "260px"
           )
         ),
         # Row 5: Treasury Overlay (12)
@@ -107,7 +107,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
             title = "Treasury Overlay",
             subtitle = "Commodity front-back spread vs Treasury 2s10s slope.",
             output_id = ns("treasury_overlay"),
-            height = "330px"
+            height = "260px"
           )
         ),
         mod_footer_notes_ui(ns("footer_notes"))

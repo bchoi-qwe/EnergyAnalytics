@@ -48,7 +48,7 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
             title = "Hedge Effectiveness",
             subtitle = "Unhedged vs hedged annualised volatility by market.",
             output_id = ns("hedge_effectiveness"),
-            height = "280px"
+            height = "240px"
           )
         ),
         # Row 2: Rolling Hedge Ratio | Rolling R-squared
@@ -58,13 +58,13 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
             title = "Rolling Hedge Ratio",
             subtitle = "Sliding window OLS beta with approximate SE band.",
             output_id = ns("rolling_hedge_ratio"),
-            height = "280px"
+            height = "240px"
           ),
           ea_plotly_card(
             title = "Rolling R-Squared",
             subtitle = "Hedge quality over time by market.",
             output_id = ns("rolling_r_squared"),
-            height = "280px"
+            height = "240px"
           )
         ),
         # Row 3: Hedge Residual with OU bands | OU Parameters Summary
@@ -74,7 +74,7 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
             title = "Hedge Residual with Mean-Reversion Bands",
             subtitle = "Cumulative OLS residual with OU \u00b11\u03c3 and \u00b12\u03c3 bands.",
             output_id = ns("residual_ou_bands"),
-            height = "320px"
+            height = "260px"
           ),
           ea_table_card(
             title = "OU Parameters",
@@ -89,13 +89,13 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
             title = "Hedge Ratio by Tenor",
             subtitle = "OLS beta at each contract tenor.",
             output_id = ns("per_tenor_ratios"),
-            height = "280px"
+            height = "240px"
           ),
           ea_plotly_card(
             title = "Stress-Period R-Squared",
             subtitle = "Normal vs high-vol regime hedge quality.",
             output_id = ns("stress_period"),
-            height = "280px"
+            height = "240px"
           )
         ),
         # Row 5: Hedging Cost Waterfall
@@ -105,7 +105,7 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
             title = "Hedging Cost Breakdown",
             subtitle = "Roll cost (M1-M2 annualised) and residual basis risk per target.",
             output_id = ns("hedge_cost_waterfall"),
-            height = "260px"
+            height = "220px"
           )
         ),
         mod_footer_notes_ui(ns("footer_notes"))

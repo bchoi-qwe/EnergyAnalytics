@@ -42,13 +42,13 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
             title = "Rolling Correlation with CI Bands",
             subtitle = "Sliding-window correlation with 2-sigma confidence bands.",
             output_id = ns("rolling_corr"),
-            height = "300px"
+            height = "250px"
           ),
           ea_plotly_card(
             title = "Correlation Matrix",
             subtitle = "Current-window pairwise dependencies.",
             output_id = ns("corr_heatmap"),
-            height = "300px"
+            height = "250px"
           )
         ),
         # Row 2: PCA Factor Structure | Treasury Factor Sensitivity
@@ -58,13 +58,13 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
             title = "PCA Factor Structure",
             subtitle = "Principal component loadings per market.",
             output_id = ns("pca_bars"),
-            height = "300px"
+            height = "250px"
           ),
           ea_plotly_card(
             title = "Treasury Factor Sensitivity",
             subtitle = "OLS betas on UST level, slope, and curvature changes.",
             output_id = ns("treasury_bars"),
-            height = "300px"
+            height = "250px"
           )
         ),
         # Row 3: Spread Time Series | Spread Z-Score Dashboard
@@ -74,13 +74,13 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
             title = "Spread Time Series",
             subtitle = "Price dislocation across active spread definitions.",
             output_id = ns("spread_ts"),
-            height = "340px"
+            height = "270px"
           ),
           ea_plotly_card(
             title = "Spread Z-Score Dashboard",
             subtitle = "Normalised spread extremity sorted by magnitude.",
             output_id = ns("spread_zscore"),
-            height = "340px"
+            height = "270px"
           )
         ),
         # Row 4: Rolling Beta Dynamics | Cointegration Residual with OU Bands
@@ -90,13 +90,13 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
             title = "Rolling Beta Dynamics",
             subtitle = "Sliding-window OLS beta per market pair.",
             output_id = ns("rolling_beta"),
-            height = "300px"
+            height = "250px"
           ),
           ea_plotly_card(
             title = "Cointegration Residual",
             subtitle = "OU-process mean-reversion bands on regression residual.",
             output_id = ns("coint_residual"),
-            height = "300px"
+            height = "250px"
           )
         ),
         mod_footer_notes_ui(ns("footer_notes"))

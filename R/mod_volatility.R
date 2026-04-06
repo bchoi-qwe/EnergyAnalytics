@@ -43,7 +43,7 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
             title = "Vol Cone",
             subtitle = "Realized vol percentile fan by horizon.",
             output_id = ns("vol_cone"),
-            height = "330px"
+            height = "260px"
           ),
           ea_table_card(
             title = "Vol Regime Summary",
@@ -58,13 +58,13 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
             title = "ATM Vol History",
             subtitle = "20d RV, 60d RV, GARCH, and ATM implied for primary market.",
             output_id = ns("atm_vol_history"),
-            height = "300px"
+            height = "250px"
           ),
           ea_plotly_card(
             title = "Vol-of-Vol Monitor",
             subtitle = "Rolling 60-day SD of 20d realized vol.",
             output_id = ns("vol_of_vol_chart"),
-            height = "300px"
+            height = "250px"
           )
         ),
         # Row 3: Realized Vol Surface heatmap (8) | Implied Vol Term Structure (4)
@@ -74,13 +74,13 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
             title = "Realized Vol Surface",
             subtitle = "Realized vol by market and tenor.",
             output_id = ns("rv_surface"),
-            height = "320px"
+            height = "260px"
           ),
           ea_plotly_card(
             title = "Implied Vol Term Structure",
             subtitle = "ATM implied vol by tenor per commodity.",
             output_id = ns("iv_term"),
-            height = "320px"
+            height = "260px"
           )
         ),
         # Row 4: Skew Chart (6) | Cross-Asset Vol Box (6)
@@ -90,13 +90,13 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
             title = "Skew / Smile",
             subtitle = "Front-month implied vol smile per commodity.",
             output_id = ns("vol_skew"),
-            height = "300px"
+            height = "250px"
           ),
           ea_plotly_card(
             title = "Cross-Asset Vol Comparison",
             subtitle = "Vol distribution box plot with current level marker.",
             output_id = ns("cross_asset_vol"),
-            height = "300px"
+            height = "250px"
           )
         ),
         # Row 5: IV vs RV Spread History (12)
@@ -106,7 +106,7 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
             title = "IV vs RV Spread History",
             subtitle = "ATM implied vs 60d realized. Teal = options rich (IV > RV); red = options cheap (IV < RV).",
             output_id = ns("iv_rv_spread_chart"),
-            height = "280px"
+            height = "240px"
           )
         ),
         mod_footer_notes_ui(ns("footer_notes"))

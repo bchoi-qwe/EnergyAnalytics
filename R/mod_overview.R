@@ -50,13 +50,13 @@ mod_overview_server <- function(id, filters, data_timestamp) {
             title = "Relative Performance",
             subtitle = "Normalized price history across selected products.",
             output_id = ns("relative_performance"),
-            height = "360px"
+            height = "280px"
           ),
           ea_plotly_card(
             title = "Top Anomalies",
             subtitle = "Highest-magnitude z-scores across spreads and vol.",
             output_id = ns("anomaly_chart"),
-            height = "360px"
+            height = "280px"
           )
         ),
         bslib::layout_columns(
@@ -65,13 +65,13 @@ mod_overview_server <- function(id, filters, data_timestamp) {
             title = "Correlation Matrix",
             subtitle = "Rolling 63-day pairwise correlations.",
             output_id = ns("correlation_heatmap"),
-            height = "330px"
+            height = "260px"
           ),
           ea_plotly_card(
             title = "Spread Monitor",
             subtitle = "Key spread z-scores and levels.",
             output_id = ns("spread_monitor_chart"),
-            height = "330px"
+            height = "260px"
           )
         ),
         bslib::layout_columns(
@@ -80,7 +80,7 @@ mod_overview_server <- function(id, filters, data_timestamp) {
             title = "Volatility Snapshot",
             subtitle = "Realized vol and percentile rank by product.",
             output_id = ns("vol_snapshot_chart"),
-            height = "300px"
+            height = "240px"
           ),
           ea_table_card(
             title = "Upcoming Events",

@@ -42,7 +42,7 @@ mod_fundamentals_server <- function(id, filters, data_timestamp) {
             "Inventory vs 5-Year Range",
             output_id = ns("inventory_seasonal"),
             subtitle = "Current year versus historical band by week.",
-            height = "320px"
+            height = "260px"
           ),
           ea_table_card(
             "Inventory Anomaly Summary",
@@ -56,13 +56,13 @@ mod_fundamentals_server <- function(id, filters, data_timestamp) {
             "Storage Capacity Utilization",
             output_id = ns("storage_util_chart"),
             subtitle = "Current utilization vs 80%/95% thresholds.",
-            height = "300px"
+            height = "250px"
           ),
           ea_plotly_card(
             "Crack Spread Monitor",
             output_id = ns("crack_spread_chart"),
             subtitle = "RB-CL and HO-CL crack spreads over time.",
-            height = "300px"
+            height = "250px"
           )
         ),
         bslib::layout_columns(
@@ -71,13 +71,13 @@ mod_fundamentals_server <- function(id, filters, data_timestamp) {
             "Treasury Yield Curve",
             output_id = ns("treasury_chart"),
             subtitle = "Current, 1-month, and 3-month ago curves.",
-            height = "300px"
+            height = "250px"
           ),
           ea_plotly_card(
             "Commodity-Rates Relationship",
             output_id = ns("comm_rate_scatter"),
             subtitle = "Daily log return vs 10Y UST change.",
-            height = "300px"
+            height = "250px"
           )
         ),
         bslib::layout_columns(

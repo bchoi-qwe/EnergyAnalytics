@@ -43,13 +43,13 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
             title = "Delta-Gamma Surface",
             subtitle = "ATM delta and gamma across tenor and moneyness.",
             output_id = ns("delta_gamma_surface"),
-            height = "340px"
+            height = "270px"
           ),
           ea_plotly_card(
             title = "Vega-Theta Surface",
             subtitle = "ATM vega and theta across tenor and moneyness.",
             output_id = ns("vega_theta_surface"),
-            height = "340px"
+            height = "270px"
           )
         ),
         # Row 2: ATM Greeks Term Structure | Greeks Concentration table
@@ -59,7 +59,7 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
             title = "ATM Greeks Term Structure",
             subtitle = "Delta, gamma, vega by contract month.",
             output_id = ns("atm_greeks_term"),
-            height = "340px"
+            height = "270px"
           ),
           ea_table_card(
             title = "Greeks Concentration",
@@ -74,13 +74,13 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
             title = "Vanna Surface",
             subtitle = "DdeltaDvol across tenor and moneyness.",
             output_id = ns("greeks_vanna"),
-            height = "340px"
+            height = "270px"
           ),
           ea_plotly_card(
             title = "Charm Surface",
             subtitle = "DdeltaDtime across tenor and moneyness.",
             output_id = ns("greeks_charm"),
-            height = "340px"
+            height = "270px"
           )
         ),
         # Row 4: Vol Smile Evolution | P&L Heatmap
@@ -90,13 +90,13 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
             title = "Vol Smile Evolution",
             subtitle = "Implied vol smile by tenor (faceted subplots).",
             output_id = ns("smile_evolution"),
-            height = "340px"
+            height = "270px"
           ),
           ea_plotly_card(
             title = "P&L Heatmap",
             subtitle = "Option P&L under spot \u00d7 vol shock.",
             output_id = ns("pnl_heatmap"),
-            height = "340px"
+            height = "270px"
           )
         ),
         # Row 5: 3rd Order Strike Profile (full width)
@@ -106,7 +106,7 @@ mod_options_greeks_server <- function(id, filters, data_timestamp) {
             title = "3rd Order Strike Profile",
             subtitle = "Speed and Zomma by strike.",
             output_id = ns("greeks_tails"),
-            height = "300px"
+            height = "250px"
           )
         ),
         mod_footer_notes_ui(ns("footer_notes"))
