@@ -282,13 +282,13 @@ ea_plotly_layout <- function(fig, x_title = NULL, y_title = NULL, hovermode = "x
         bgcolor = "rgba(0,0,0,0)"
       ),
       xaxis = list(
-        title = x_title,
+        title = if (is.null(x_title)) "" else x_title,
         color = "#9aa6b2",
         gridcolor = "rgba(148, 163, 184, 0.08)",
         zerolinecolor = "rgba(148, 163, 184, 0.10)"
       ),
       yaxis = list(
-        title = y_title,
+        title = if (is.null(y_title)) "" else y_title,
         color = "#9aa6b2",
         gridcolor = "rgba(148, 163, 184, 0.08)",
         zerolinecolor = "rgba(148, 163, 184, 0.10)"
