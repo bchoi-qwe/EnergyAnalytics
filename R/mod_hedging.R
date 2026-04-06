@@ -145,7 +145,7 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
     # --- Row 1 right: Hedge Effectiveness grouped bar ---
     output$hedge_effectiveness <- plotly::renderPlotly({
       eff <- page_data()$hedge_effectiveness
-      fig <- plotly::plot_ly(data = eff, x = ~market, barmode = "group") |>
+      fig <- plotly::plot_ly(data = eff, x = ~market) |>
         plotly::add_bars(
           y = ~unhedged_vol,
           name = "Unhedged",
@@ -157,7 +157,8 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
           name = "Hedged",
           marker = list(color = "#4da3a3"),
           hovertemplate = "%{x}<br>Hedged: %{y:.3f}<extra></extra>"
-        )
+        ) |>
+        plotly::layout(barmode = "group")
       ea_plotly_layout(fig, x_title = NULL, y_title = "Ann. Vol", hovermode = "closest")
     })
 
@@ -423,7 +424,7 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
     output$hedge_cost_waterfall <- plotly::renderPlotly({
       hc <- page_data()$hedge_cost
 
-      fig <- plotly::plot_ly(data = hc, x = ~market, barmode = "stack") |>
+      fig <- plotly::plot_ly(data = hc, x = ~market) |>
         plotly::add_bars(
           y = ~roll_cost,
           name = "Roll Cost",
@@ -435,7 +436,8 @@ mod_hedging_server <- function(id, filters, data_timestamp) {
           name = "Basis Risk",
           marker = list(color = "#d36e70"),
           hovertemplate = "%{x}<br>Basis Risk: %{y:.3f}<extra></extra>"
-        )
+        ) |>
+        plotly::layout(barmode = "stack")
 
       ea_plotly_layout(fig, x_title = NULL, y_title = "Cost", hovermode = "closest")
     })

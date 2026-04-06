@@ -173,8 +173,8 @@ ea_calc_hedging <- function(filters) {
         return(tibble::tibble(market = mkt, tenor = tn, beta = NA_real_, r_squared = NA_real_))
       }
 
-      y_ret <- diff(log(wide[[mkt]]))
-      x_ret <- diff(log(wide[[benchmark]]))
+      y_ret <- suppressWarnings(diff(log(wide[[mkt]])))
+      x_ret <- suppressWarnings(diff(log(wide[[benchmark]])))
       valid <- !is.na(y_ret) & !is.na(x_ret) & is.finite(y_ret) & is.finite(x_ret)
       if (sum(valid) < 20) return(tibble::tibble(market = mkt, tenor = tn, beta = NA_real_, r_squared = NA_real_))
 

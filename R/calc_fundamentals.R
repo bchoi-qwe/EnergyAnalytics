@@ -160,7 +160,7 @@ ea_calc_fundamentals <- function(filters) {
       dplyr::filter(.data$curve_point_num == 1L, .data$market %in% markets) |>
       dplyr::arrange(.data$market, .data$date) |>
       dplyr::group_by(.data$market) |>
-      dplyr::mutate(commodity_chg = log(.data$value / dplyr::lag(.data$value))) |>
+      dplyr::mutate(commodity_chg = suppressWarnings(log(.data$value / dplyr::lag(.data$value)))) |>
       dplyr::ungroup() |>
       dplyr::filter(!is.na(.data$commodity_chg), is.finite(.data$commodity_chg))
 
