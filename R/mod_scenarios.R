@@ -116,7 +116,7 @@ mod_scenarios_server <- function(id, filters, data_timestamp) {
               ea_badge(paste("Spread", preset$spread), tone = "neutral")
             ),
             shiny::actionButton(
-              ns(paste0("load_", preset$id)), "Load shock",
+              ns(paste0("load_", preset$id)), "Load Shock",
               class = "btn btn-sm btn-outline-secondary ea-preset-card__button"
             )
           )
@@ -139,7 +139,7 @@ mod_scenarios_server <- function(id, filters, data_timestamp) {
         plotly::add_lines(data = ic, x = ~tenor, y = ~impact, name = "Shocked",
           line = list(color = "#4da3a3", width = 2.4),
           hovertemplate = "Tenor %{x}<br>%{y:.2f}<extra>%{fullData.name}</extra>")
-      ea_plotly_layout(fig, x_title = "Contract month", y_title = "Curve level")
+      ea_plotly_layout(fig, x_title = "Contract Month", y_title = "Curve Level")
     })
 
     # ---- Factor Attribution ----

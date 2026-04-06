@@ -142,7 +142,7 @@ mod_overview_server <- function(id, filters, data_timestamp) {
             name = lbl, line = list(color = col, width = 2),
             hovertemplate = "%{x|%d %b %Y}<br>%{y:.1f}<extra>%{fullData.name}</extra>")
       }
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Relative index (100)")
+      ea_plotly_layout(fig, x_title = NULL, y_title = "Relative Index (100)")
     })
 
     output$anomaly_chart <- plotly::renderPlotly({
@@ -150,7 +150,7 @@ mod_overview_server <- function(id, filters, data_timestamp) {
       fig <- plotly::plot_ly()
       if (nrow(ta) == 0L) {
         fig <- fig |> plotly::add_annotations(text = "No anomalies detected", showarrow = FALSE)
-        return(ea_plotly_layout(fig, x_title = "Z-score", y_title = NULL))
+        return(ea_plotly_layout(fig, x_title = "Z-Score", y_title = NULL))
       }
       ta <- ta[order(abs(ta$zscore)), , drop = FALSE]
       bar_colors <- ifelse(ta$zscore >= 0, "#4da3a3", "#b35c60")
@@ -163,7 +163,7 @@ mod_overview_server <- function(id, filters, data_timestamp) {
           list(type = "line", x0 = 0, x1 = 0, y0 = -0.5, y1 = nrow(ta) - 0.5,
                line = list(color = "#7f8b99", width = 1, dash = "dot"))
         ))
-      ea_plotly_layout(fig, x_title = "Z-score", y_title = NULL, hovermode = "closest")
+      ea_plotly_layout(fig, x_title = "Z-Score", y_title = NULL, hovermode = "closest")
     })
 
     output$correlation_heatmap <- plotly::renderPlotly({
@@ -184,7 +184,7 @@ mod_overview_server <- function(id, filters, data_timestamp) {
     output$spread_monitor_chart <- plotly::renderPlotly({
       sm <- page_data()$spread_monitor
       fig <- plotly::plot_ly()
-      if (nrow(sm) == 0L) return(ea_plotly_layout(fig, x_title = "Z-score", y_title = NULL))
+      if (nrow(sm) == 0L) return(ea_plotly_layout(fig, x_title = "Z-Score", y_title = NULL))
       sm <- sm[order(abs(sm$zscore)), , drop = FALSE]
       bar_colors <- ifelse(sm$zscore >= 0, "#4da3a3", "#b35c60")
       fig <- plotly::plot_ly(data = sm, x = ~zscore, y = ~spread_label,
@@ -196,7 +196,7 @@ mod_overview_server <- function(id, filters, data_timestamp) {
           list(type = "line", x0 = 0, x1 = 0, y0 = -0.5, y1 = nrow(sm) - 0.5,
                line = list(color = "#7f8b99", width = 1, dash = "dot"))
         ))
-      ea_plotly_layout(fig, x_title = "Z-score", y_title = NULL, hovermode = "closest")
+      ea_plotly_layout(fig, x_title = "Z-Score", y_title = NULL, hovermode = "closest")
     })
 
     output$vol_snapshot_chart <- plotly::renderPlotly({
@@ -213,7 +213,7 @@ mod_overview_server <- function(id, filters, data_timestamp) {
           hovertemplate = "%{x}<br>Percentile: %{y:.0%}<extra></extra>") |>
         plotly::layout(yaxis2 = list(title = "Percentile", overlaying = "y", side = "right",
           color = "#9aa6b2", showgrid = FALSE, tickformat = ".0%"))
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Realized vol (ann.)")
+      ea_plotly_layout(fig, x_title = NULL, y_title = "Realized Vol (Ann.)")
     })
 
     output$upcoming_events_table <- reactable::renderReactable({
