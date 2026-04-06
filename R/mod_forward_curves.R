@@ -133,7 +133,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
           )
       }
 
-      ea_plotly_layout(fig, x_title = "Contract month", y_title = "Price")
+      ea_plotly_layout(fig, x_title = "Contract Month", y_title = "Price")
     })
 
     # --- Row 1: Structure Summary Table ---
@@ -208,7 +208,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
           )
       }
 
-      ea_plotly_layout(fig, x_title = "Contract month", y_title = "Price")
+      ea_plotly_layout(fig, x_title = "Contract Month", y_title = "Price")
     })
 
     # --- Row 2: Curve Shift Heatmap ---
@@ -229,7 +229,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
         hovertemplate = "Date %{x}<br>M%{y}<br>%{z:.2f}<extra>curve shift</extra>"
       )
 
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Contract month", hovermode = "closest")
+      ea_plotly_layout(fig, x_title = NULL, y_title = "Contract Month", hovermode = "closest")
     })
 
     # --- Row 3: Calendar Spread Strip ---
@@ -257,7 +257,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
         hovertemplate = "%{x}<br>Spread: %{y:.3f}<br>Z-score: %{customdata:.2f}<extra></extra>"
       )
 
-      ea_plotly_layout(fig, x_title = "Tenor pair", y_title = "Spread", hovermode = "closest")
+      ea_plotly_layout(fig, x_title = "Tenor Pair", y_title = "Spread", hovermode = "closest")
     })
 
     # --- Row 3: Prompt Spread History ---
@@ -301,7 +301,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
     output$roll_yield_chart <- plotly::renderPlotly({
       ry <- page_data()$roll_yield
       if (is.null(ry) || nrow(ry) == 0) {
-        return(plotly::plot_ly() |> ea_plotly_layout(x_title = NULL, y_title = "Roll Yield (ann.)"))
+        return(plotly::plot_ly() |> ea_plotly_layout(x_title = NULL, y_title = "Roll Yield (Ann.)"))
       }
 
       bar_colors <- ifelse(ry$roll_yield_ann >= 0, "#74a66e", "#b35c60")
@@ -315,7 +315,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
         hovertemplate = "%{x}<br>Roll yield: %{y:.1%}<extra></extra>"
       )
 
-      ea_plotly_layout(fig, x_title = "Tenor pair", y_title = "Roll Yield (ann.)", hovermode = "closest")
+      ea_plotly_layout(fig, x_title = "Tenor Pair", y_title = "Roll Yield (Ann.)", hovermode = "closest")
     })
 
     # --- Row 4: PCA Factor Decomposition ---
@@ -387,7 +387,7 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
           )
         )
 
-      ea_plotly_layout(fig, x_title = "Date", y_title = "Commodity Spread")
+      ea_plotly_layout(fig, x_title = NULL, y_title = "Spread")
     })
   })
 }
