@@ -83,3 +83,6 @@ renv/
 renv.lock
 scripts/
 tests/
+**/renv/
+**/scripts/
+**/tests/
