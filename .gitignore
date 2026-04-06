@@ -61,3 +61,20 @@ renv/library/
 renv/local/
 renv/python/
 renv/staging/
+
+# AI tooling and session data
+.claude/
+.agents/
+.vscode/
+.playwright-cli/
+notes/
+specs/
+docs/
+seed.spec.ts
+skills-lock.json
+
+# GitHub Copilot / AI workflow files
+.github/
+
+# UI audit screenshots
+ui_*.png
