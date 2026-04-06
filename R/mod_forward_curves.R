@@ -360,14 +360,16 @@ mod_forward_curves_server <- function(id, filters, data_timestamp) {
         return(plotly::plot_ly() |> ea_plotly_layout(x_title = "Date", y_title = "Spread"))
       }
 
-      fig <- plotly::plot_ly(data = tov, x = ~date) |>
+      fig <- plotly::plot_ly() |>
         plotly::add_lines(
+          data = tov, x = ~date,
           y = ~cmdty_spread,
           name = "Commodity Spread",
           line = list(width = 2, color = "#4da3a3"),
           hovertemplate = "%{x}<br>Cmdty spread: %{y:.2f}<extra></extra>"
         ) |>
         plotly::add_lines(
+          data = tov, x = ~date,
           y = ~slope_2s10s,
           name = "Treasury 2s10s",
           yaxis = "y2",

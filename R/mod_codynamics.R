@@ -342,8 +342,9 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
 
       mu_val <- df_cr$ou_mu[1]
 
-      fig <- plotly::plot_ly(data = df_cr, x = ~date) |>
+      fig <- plotly::plot_ly() |>
         plotly::add_ribbons(
+          data = df_cr, x = ~date,
           ymin = ~band_2_lo,
           ymax = ~band_2_hi,
           name = "2-sigma band",
@@ -353,6 +354,7 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
           hoverinfo = "skip"
         ) |>
         plotly::add_ribbons(
+          data = df_cr, x = ~date,
           ymin = ~band_1_lo,
           ymax = ~band_1_hi,
           name = "1-sigma band",
@@ -362,6 +364,7 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
           hoverinfo = "skip"
         ) |>
         plotly::add_lines(
+          data = df_cr, x = ~date,
           y = ~residual,
           name = paste0(first_pair, " residual"),
           line = list(color = "#4da3a3", width = 1.5),

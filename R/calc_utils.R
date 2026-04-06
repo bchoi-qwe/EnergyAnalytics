@@ -34,7 +34,7 @@ ea_log_returns <- function(curves_long) {
   curves_long |>
     dplyr::arrange(.data$market, .data$curve_point, .data$date) |>
     dplyr::group_by(.data$market, .data$curve_point) |>
-    dplyr::mutate(log_return = log(.data$value / dplyr::lag(.data$value))) |>
+    dplyr::mutate(log_return = suppressWarnings(log(.data$value / dplyr::lag(.data$value)))) |>
     dplyr::ungroup()
 }
 
