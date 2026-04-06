@@ -12,3 +12,14 @@
 ^\.gitignore$
 ^\.gitattributes$
 ^LICENSE\.md$
+^\.agents$
+^\.claude$
+^\.vscode$
+^\.playwright-cli$
+^\.github$
+^specs$
+^docs$
+^seed\.spec\.ts$
+^skills-lock\.json$
+^CLAUDE\.md$
+^ui_.*\.png$
