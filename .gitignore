@@ -70,3 +70,16 @@ po/*~
 seed.spec.ts
 skills-lock.json
 ui_*.png
+
+# --- Deployment & Local Config (Off-GitHub) ---
+EnergyAnalytics.Rproj
+.Rprofile
+.Renviron.example
+.Rbuildignore
+.gitattributes
+CLAUDE.md
+LICENSE*
+renv/
+renv.lock
+scripts/
+tests/
