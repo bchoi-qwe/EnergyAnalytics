@@ -44,25 +44,29 @@ mod_seasonality_server <- function(id, filters, data_timestamp) {
             title = "Seasonal Overlay",
             subtitle = "Current year vs 5-year historical range.",
             output_id = ns("seasonal_overlay"),
-            height = "330px"
+            height = "270px"
           ),
           ea_plotly_card(
             title = "Calendar Heatmap",
             subtitle = "Month-by-year seasonal structure.",
             output_id = ns("seasonal_heatmap"),
-            height = "330px"
+            height = "270px"
           )
         ),
         # Row 2
-        bslib::layout_columns(
-          col_widths = c(12),
-          ea_plotly_card(
-            title = "STL Decomposition",
-            subtitle = "Trend, seasonal, and remainder components (faceted).",
-            output_id = ns("stl_decomposition"),
-            height = "380px"
+        {
+          stl_data <- tryCatch(page_data()$stl_decomposition, error = function(e) NULL)
+          stl_height <- if (is.null(stl_data) || nrow(stl_data) == 0L) "60px" else "300px"
+          bslib::layout_columns(
+            col_widths = c(12),
+            ea_plotly_card(
+              title = "STL Decomposition",
+              subtitle = "Trend, seasonal, and remainder components (faceted).",
+              output_id = ns("stl_decomposition"),
+              height = stl_height
+            )
           )
-        ),
+        },
         # Row 3
         bslib::layout_columns(
           col_widths = c(8, 4),
@@ -70,13 +74,13 @@ mod_seasonality_server <- function(id, filters, data_timestamp) {
             title = "Year-on-Year",
             subtitle = "Relative path comparison across recent years.",
             output_id = ns("yoy_compare"),
-            height = "330px"
+            height = "270px"
           ),
           ea_plotly_card(
             title = "Seasonal Spread Profile",
             subtitle = "M1-M2 spread by day-of-year with percentile bands.",
             output_id = ns("seasonal_spread_chart"),
-            height = "330px"
+            height = "270px"
           )
         ),
         # Row 4
