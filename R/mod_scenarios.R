@@ -77,20 +77,20 @@ mod_scenarios_server <- function(id, filters, data_timestamp) {
         # Row 1: Shock Impact | Factor Attribution
         bslib::layout_columns(
           col_widths = c(8, 4),
-          ea_plotly_card("Shock Impact", "Base versus shocked term structure.", ns("scenario_impact"), height = "360px"),
-          ea_plotly_card("Impact Attribution", "Contribution by risk driver.", ns("scenario_propagation"), height = "360px")
+          ea_plotly_card("Shock Impact", "Base versus shocked term structure.", ns("scenario_impact"), height = "280px"),
+          ea_plotly_card("Impact Attribution", "Contribution by risk driver.", ns("scenario_propagation"), height = "280px")
         ),
         # Row 2: GBM Fan Chart | Return Distribution
         bslib::layout_columns(
           col_widths = c(7, 5),
-          ea_plotly_card("Monte Carlo Simulation", "GBM price fan chart with percentile bands.", ns("mc_fan"), height = "340px"),
-          ea_plotly_card("Return Distribution", "Terminal return histogram from simulation.", ns("return_dist"), height = "340px")
+          ea_plotly_card("Monte Carlo Simulation", "GBM price fan chart with percentile bands.", ns("mc_fan"), height = "270px"),
+          ea_plotly_card("Return Distribution", "Terminal return histogram from simulation.", ns("return_dist"), height = "270px")
         ),
         # Row 3: Historical Analogs | Stress Table
         bslib::layout_columns(
           col_widths = c(7, 5),
-          ea_plotly_card("Historical Analogs", "3 most similar prior periods \u2014 forward path replay.", ns("historical_analog"), height = "340px"),
-          ea_plotly_card("Stress VaR", "Normal vs stress correlation regime.", ns("stress_var"), height = "340px")
+          ea_plotly_card("Historical Analogs", "3 most similar prior periods \u2014 forward path replay.", ns("historical_analog"), height = "270px"),
+          ea_plotly_card("Stress VaR", "Normal vs stress correlation regime.", ns("stress_var"), height = "270px")
         ),
         mod_footer_notes_ui(ns("footer_notes"))
       )
