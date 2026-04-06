@@ -131,7 +131,7 @@ mod_scenarios_server <- function(id, filters, data_timestamp) {
     output$scenario_impact <- plotly::renderPlotly({
       ic <- scenario_data()$impact_curve
       fig <- plotly::plot_ly()
-      if (nrow(ic) == 0L) return(ea_plotly_layout(fig, x_title = "Contract month", y_title = "Price"))
+      if (nrow(ic) == 0L) return(ea_plotly_layout(fig, x_title = "Contract Month", y_title = "Price"))
       fig <- fig |>
         plotly::add_lines(data = ic, x = ~tenor, y = ~base, name = "Base",
           line = list(color = "#7f8b99", width = 1.7, dash = "dot"),
