@@ -120,7 +120,7 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
       fig <- plotly::plot_ly()
 
       if (nrow(vc) == 0) {
-        return(ea_plotly_layout(fig, x_title = "Horizon (days)", y_title = "Annualized Vol"))
+        return(ea_plotly_layout(fig, x_title = "Horizon (Days)", y_title = "Annualized Vol"))
       }
 
       for (mkt in unique(vc$market)) {
@@ -173,7 +173,7 @@ mod_volatility_server <- function(id, filters, data_timestamp) {
           )
       }
 
-      ea_plotly_layout(fig, x_title = "Horizon (days)", y_title = "Annualized Vol")
+      ea_plotly_layout(fig, x_title = "Horizon (Days)", y_title = "Annualized Vol")
     })
 
     # --- Row 1 Right: Vol Regime Table ---
