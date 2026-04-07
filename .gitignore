@@ -16,6 +16,8 @@ vignettes/*.pdf
 **/cache/
 *.utf8.md
 *.knit.md
+revdep/
+cran-comments.md
 
 # --- Compiled Objects (Rcpp/C++) ---
 src/*.o
@@ -39,6 +41,8 @@ src-x64/
 **/*.swp
 **/*.swo
 .vscode/
+.quarto/
+_site/
 
 # --- Environment & Secrets ---
 .Renviron
@@ -55,12 +59,12 @@ renv/staging/
 .python-version
 __pycache__/
 node_modules/
+skills-lock.json
 
 # --- Project-Specific & AI Tooling ---
 .claude/
 .agents/
 .playwright-cli/
-.github/
 notes/
 specs/
 docs/
@@ -68,21 +72,9 @@ artifacts/
 rsconnect/
 po/*~
 seed.spec.ts
-skills-lock.json
 ui_*.png
+UI_MINIMUM_SPECS.md
 
-# --- Deployment & Local Config (Off-GitHub) ---
-EnergyAnalytics.Rproj
-.Rprofile
-.Renviron.example
+# --- Deployment & Local Config ---
 .Rbuildignore
 .gitattributes
-CLAUDE.md
-LICENSE*
-renv/
-renv.lock
-scripts/
-tests/
-**/renv/
-**/scripts/
-**/tests/

@@ -1,0 +1,41 @@
+# --- Git & CI ---
+.git/
+.github/
+.gitignore
+
+# --- IDE & Metadata ---
+.Rproj.user/
+.Rhistory
+.RData
+.RDataTmp
+.RData.*
+.DS_Store
+**/.DS_Store
+
+# --- Project-Specific ---
+.agents/
+.claude/
+.playwright-cli/
+notes/
+specs/
+docs/
+artifacts/
+UI_MINIMUM_SPECS.md
+README.md
+
+# --- Source Data ---
+# We keep inst/extdata/ but exclude the raw source data.
+data-raw/
+
+# --- Local Config & Secrets ---
+.Renviron
+.Renviron.local
+.Rprofile
+.env
+.env.*
+
+# --- Package Management ---
+renv/
+renv.lock
+node_modules/
+__pycache__/
