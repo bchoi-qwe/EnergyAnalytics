@@ -115,6 +115,7 @@ jobs:
             docker.io/${{ vars.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
           flavor: |
             latest=auto
+            lower=true
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
