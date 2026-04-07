@@ -45,7 +45,7 @@ RUN useradd --create-home --shell /bin/bash appuser
 
 # Pre-cache Google Fonts to prevent startup delays
 RUN mkdir -p /home/appuser/.cache/R/sass \
-    && R -q -e "library(EnergyAnalytics); try(bslib::font_google('IBM Plex Sans'), silent=TRUE); try(bslib::font_google('IBM Plex Mono'), silent=TRUE)" \
+    && R -q -e "library(EnergyAnalytics); theme <- ea_theme(); bslib::bs_theme_dependencies(theme)" \
     && chown -R appuser:appuser /home/appuser/.cache \
     && chown -R appuser:appuser /app
 
