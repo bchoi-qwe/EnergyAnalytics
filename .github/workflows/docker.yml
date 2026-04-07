@@ -28,6 +28,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -122,6 +125,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.publish_meta.outputs.tags }}
           labels: ${{ steps.publish_meta.outputs.labels }}

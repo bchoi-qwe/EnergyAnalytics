@@ -40,12 +40,13 @@ RUN rm -f src/*.so src/*.o src/*.dll
 
 RUN R -q -e "pak::local_install(root = '.', dependencies = TRUE, ask = FALSE)"
 
+# Create appuser early so we can use it for caching
+RUN useradd --create-home --shell /bin/bash appuser
+
 # Pre-cache Google Fonts to prevent startup delays
 RUN mkdir -p /home/appuser/.cache/R/sass \
     && R -q -e "library(EnergyAnalytics); try(bslib::font_google('IBM Plex Sans'), silent=TRUE); try(bslib::font_google('IBM Plex Mono'), silent=TRUE)" \
-    && chown -R appuser:appuser /home/appuser/.cache
-
-RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /home/appuser/.cache \
     && chown -R appuser:appuser /app
 
 USER appuser
