@@ -1,7 +1,22 @@
+# --- Compiled Objects (CRITICAL for Mac users) ---
+src/*.o
+src/*.so
+src/*.dll
+src/*.dylib
+src/*.d
+src/*.gcda
+src/*.gcno
+src/symbols.rds
+src/Makedeps
+src-i386/
+src-x64/
+
 # --- Git & CI ---
 .git/
 .github/
 .gitignore
+.Rbuildignore
+.gitattributes
 
 # --- IDE & Metadata ---
 .Rproj.user/
@@ -11,6 +26,7 @@
 .RData.*
 .DS_Store
 **/.DS_Store
+*.Rproj
 
 # --- Project-Specific ---
 .agents/
@@ -22,6 +38,8 @@ docs/
 artifacts/
 UI_MINIMUM_SPECS.md
 README.md
+CLAUDE.md
+skills-lock.json
 
 # --- Source Data ---
 # We keep inst/extdata/ but exclude the raw source data.
@@ -39,3 +57,8 @@ renv/
 renv.lock
 node_modules/
 __pycache__/
+
+# --- Tests ---
+# Exclude tests from the production image to keep it lean.
+tests/
+testthat.R
