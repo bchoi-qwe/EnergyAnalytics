@@ -1,4 +1,5 @@
-# Theme tuned for a dark, institutional analytics surface.
+#' Theme tuned for a dark, institutional analytics surface.
+#' @export
 ea_theme <- function() {
   bslib::bs_theme(
     version = 5,
