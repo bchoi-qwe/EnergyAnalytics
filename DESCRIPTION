@@ -11,9 +11,9 @@ Authors@R:
 Description: Creates and loads local, versioned calculation datasets for the
     EnergyAnalytics project and provides the UI shell for a production-style
     Golem dashboard. Source data is normalized into canonical Feather datasets
-    for downstream calculations. The current dashboard remains a shell with
-    deterministic mock analytics outputs while backend calculations are wired
-    to the local snapshot, so the app never calls external APIs at runtime.
+    for downstream calculations. The dashboard is wired to the local snapshot
+    using dedicated calculation engines for each module, ensuring the app never
+    calls external APIs at runtime.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends:
@@ -27,9 +27,11 @@ Imports:
     dplyr,
     glue,
     golem,
+    httr,
     htmltools,
     jsonlite,
     lubridate,
+    magrittr,
     plotly,
     purrr,
     reactable,

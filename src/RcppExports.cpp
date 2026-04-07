@@ -10,6 +10,20 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// rolling_pair_stats_cpp
+Rcpp::DataFrame rolling_pair_stats_cpp(Rcpp::NumericVector x, Rcpp::NumericVector y, int window, int min_obs);
+RcppExport SEXP _EnergyAnalytics_rolling_pair_stats_cpp(SEXP xSEXP, SEXP ySEXP, SEXP windowSEXP, SEXP min_obsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type x(xSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type y(ySEXP);
+    Rcpp::traits::input_parameter< int >::type window(windowSEXP);
+    Rcpp::traits::input_parameter< int >::type min_obs(min_obsSEXP);
+    rcpp_result_gen = Rcpp::wrap(rolling_pair_stats_cpp(x, y, window, min_obs));
+    return rcpp_result_gen;
+END_RCPP
+}
 // black76_greeks_vectorised
 Rcpp::DataFrame black76_greeks_vectorised(Rcpp::NumericVector F, Rcpp::NumericVector K, Rcpp::NumericVector r, Rcpp::NumericVector T, Rcpp::NumericVector sigma, Rcpp::LogicalVector is_call);
 RcppExport SEXP _EnergyAnalytics_black76_greeks_vectorised(SEXP FSEXP, SEXP KSEXP, SEXP rSEXP, SEXP TSEXP, SEXP sigmaSEXP, SEXP is_callSEXP) {
@@ -28,6 +42,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_EnergyAnalytics_rolling_pair_stats_cpp", (DL_FUNC) &_EnergyAnalytics_rolling_pair_stats_cpp, 4},
     {"_EnergyAnalytics_black76_greeks_vectorised", (DL_FUNC) &_EnergyAnalytics_black76_greeks_vectorised, 6},
     {NULL, NULL, 0}
 };

@@ -14,7 +14,7 @@ mod_kpi_strip_server <- function(id, kpis) {
         row <- kpi_data[i, ]
 
         htmltools::tags$div(
-          class = paste("ea-kpi-pill", paste0("ea-kpi-pill--", row$status)),
+          class = "ea-kpi-pill",
           htmltools::tags$div(class = "ea-kpi-pill__label", row$title),
           htmltools::tags$div(
             class = "ea-kpi-pill__body",

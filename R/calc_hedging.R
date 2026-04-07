@@ -1,338 +1,557 @@
 # ---- Hedging Calculation Layer ----
 # Hedge ratios, rolling betas, effectiveness, and mean reversion.
 
-ea_calc_hedging <- function(filters) {
+ea_calc_hedging <- function(filters, history_context = "5y") {
   catalog <- ea_market_catalog()
+  history_context <- ea_normalize_history_context(history_context)
   markets <- ea_coalesce(filters$commodities, c("CL", "BRN", "RB"))
   benchmark <- ea_coalesce(filters$comparison_commodity, "CL")
   window <- ea_parse_rolling_window(ea_coalesce(filters$rolling_window, "63D"))
   annualize <- sqrt(252)
 
-
-  # Hedge targets: markets that are NOT the benchmark
   targets <- setdiff(markets, benchmark)
   all_mkts <- unique(c(targets, benchmark))
 
-  # Front contract log returns
-  all_returns <- ea_load_dataset("commodity_curve_long") |>
-    dplyr::filter(.data$market %in% all_mkts, .data$curve_point_num == 1) |>
-    dplyr::arrange(.data$market, .data$date) |>
-    dplyr::group_by(.data$market) |>
-    dplyr::mutate(log_return = suppressWarnings(log(.data$value / dplyr::lag(.data$value)))) |>
-    dplyr::ungroup() |>
-    dplyr::filter(!is.na(.data$log_return))
+  empty_ratios <- tibble::tibble(market = character(), beta = numeric(), r_squared = numeric(), std_error = numeric())
+  empty_rolling <- tibble::tibble(date = as.Date(character()), market = character(), beta = numeric(), r_squared = numeric())
+  empty_effectiveness <- tibble::tibble(market = character(), unhedged_vol = numeric(), hedged_vol = numeric(), vol_reduction_pct = numeric())
+  empty_residual <- tibble::tibble(date = as.Date(character()), market = character(), residual = numeric())
+  empty_ou <- tibble::tibble(market = character(), theta = numeric(), mu = numeric(), sigma = numeric(), half_life = numeric())
+  empty_cross <- tibble::tibble(market_x = character(), market_y = character(), beta = numeric(), r_squared = numeric())
+  empty_tenor <- tibble::tibble(market = character(), tenor = numeric(), beta = numeric(), r_squared = numeric())
+  empty_stability <- tibble::tibble(market = character(), beta_sd = numeric())
+  empty_cost <- tibble::tibble(market = character(), roll_cost = numeric(), basis_risk_cost = numeric())
+  empty_stress <- tibble::tibble(market = character(), r2_normal = numeric(), r2_stress = numeric())
+  empty_bands <- tibble::tibble(date = as.Date(character()), market = character(), residual = numeric(), ou_mu = numeric(), band_1_lo = numeric(), band_1_hi = numeric(), band_2_lo = numeric(), band_2_hi = numeric())
 
-  returns_wide <- all_returns |>
-    dplyr::select("date", "market", "log_return") |>
-    tidyr::pivot_wider(names_from = "market", values_from = "log_return") |>
-    dplyr::arrange(.data$date) |>
-    stats::na.omit()
+  build_front_returns <- function(curves) {
+    curves %>%
+      dplyr::filter(.data$curve_point_num == 1) %>%
+      dplyr::arrange(.data$market, .data$date) %>%
+      dplyr::group_by(.data$market) %>%
+      dplyr::mutate(
+        prev_value = dplyr::lag(.data$value),
+        raw_log_return = suppressWarnings(log(.data$value / .data$prev_value)),
+        log_return = dplyr::if_else(
+          is.finite(.data$value) & is.finite(.data$prev_value) & .data$value > 0 & .data$prev_value > 0,
+          .data$raw_log_return,
+          NA_real_
+        )
+      ) %>%
+      dplyr::ungroup() %>%
+      dplyr::filter(!is.na(.data$log_return), is.finite(.data$log_return)) %>%
+      dplyr::select(.data$date, .data$market, .data$value, .data$log_return)
+  }
 
-  # --- hedge_ratios: OLS beta of each target vs benchmark ---
-  hedge_ratios <- purrr::map_dfr(targets, function(mkt) {
-    df <- returns_wide |> dplyr::select(y = dplyr::all_of(mkt), x = dplyr::all_of(benchmark))
-    fit <- stats::lm(y ~ x, data = df)
-    tidy_coef <- broom::tidy(fit)
-    glance_fit <- broom::glance(fit)
+  curve_filters <- filters
+  curve_filters$commodities <- all_mkts
 
-    x_row <- tidy_coef[tidy_coef$term == "x", ]
+  display_curves <- ea_load_filtered_curves(curve_filters, apply_date_range = TRUE)
+  all_curves <- ea_load_filtered_curves(curve_filters, apply_date_range = FALSE)
 
-    tibble::tibble(
+  if (nrow(all_curves) == 0L || !benchmark %in% unique(all_curves$market) || length(targets) == 0L) {
+    return(list(
+      available_markets = markets,
+      history_context = history_context,
+      history_context_label = ea_history_context_label(history_context),
+      display_window = as.Date(c(NA, NA)),
+      context_window = as.Date(c(NA, NA)),
+      hedge_ratios = empty_ratios,
+      rolling_beta = empty_rolling,
+      hedge_effectiveness = empty_effectiveness,
+      residual_timeseries = empty_residual,
+      ou_fit = empty_ou,
+      cross_hedge_matrix = empty_cross,
+      per_tenor_ratios = empty_tenor,
+      ratio_stability = empty_stability,
+      hedge_cost = empty_cost,
+      stress_period_comparison = empty_stress,
+      residual_with_bands = empty_bands,
+      kpis = tibble::tibble(title = character(), value = character(), delta = character(), status = character()),
+      notes = c("Cross-hedging requires a benchmark plus at least one target with overlapping history."),
+      assumptions = c(paste0("Rolling window: ", window, " trading days."))
+    ))
+  }
+
+  available_markets <- unique(c(targets[targets %in% unique(all_curves$market)], benchmark))
+  targets <- setdiff(available_markets, benchmark)
+
+  display_curves <- display_curves %>%
+    dplyr::filter(.data$market %in% available_markets) %>%
+    dplyr::arrange(.data$market, .data$curve_point_num, .data$date)
+
+  all_curves <- all_curves %>%
+    dplyr::filter(.data$market %in% available_markets) %>%
+    dplyr::arrange(.data$market, .data$curve_point_num, .data$date)
+
+  if (nrow(display_curves) == 0L) {
+    return(list(
+      available_markets = available_markets,
+      history_context = history_context,
+      history_context_label = ea_history_context_label(history_context),
+      display_window = as.Date(c(NA, NA)),
+      context_window = as.Date(c(NA, NA)),
+      hedge_ratios = empty_ratios,
+      rolling_beta = empty_rolling,
+      hedge_effectiveness = empty_effectiveness,
+      residual_timeseries = empty_residual,
+      ou_fit = empty_ou,
+      cross_hedge_matrix = empty_cross,
+      per_tenor_ratios = empty_tenor,
+      ratio_stability = empty_stability,
+      hedge_cost = empty_cost,
+      stress_period_comparison = empty_stress,
+      residual_with_bands = empty_bands,
+      kpis = tibble::tibble(title = character(), value = character(), delta = character(), status = character()),
+      notes = c("Hedging charts use the selected display range. The current display range contains no data."),
+      assumptions = c(paste0("Rolling window: ", window, " trading days."))
+    ))
+  }
+
+  window_info <- ea_resolve_analysis_windows(display_curves$date, all_curves$date, history_context)
+  display_window <- window_info$display_window
+  context_window <- window_info$context_window
+  anchor_date <- window_info$anchor_date
+
+  context_curves <- all_curves %>%
+    dplyr::filter(.data$date >= context_window[[1]], .data$date <= context_window[[2]])
+  calc_curves <- all_curves %>%
+    dplyr::filter(.data$date <= anchor_date)
+
+  all_returns <- build_front_returns(calc_curves)
+  context_returns <- all_returns %>%
+    dplyr::filter(.data$date >= context_window[[1]], .data$date <= context_window[[2]])
+
+  all_returns_wide <- all_returns %>%
+    dplyr::select(.data$date, .data$market, .data$log_return) %>%
+    tidyr::pivot_wider(names_from = "market", values_from = "log_return") %>%
+    dplyr::arrange(.data$date)
+
+  context_returns_wide <- context_returns %>%
+    dplyr::select(.data$date, .data$market, .data$log_return) %>%
+    tidyr::pivot_wider(names_from = "market", values_from = "log_return") %>%
+    dplyr::arrange(.data$date)
+
+  pair_frame_from_wide <- function(wide_frame, target_market, benchmark_market = benchmark, complete = FALSE) {
+    cols <- c("date", target_market, benchmark_market)
+    if (!all(cols %in% names(wide_frame))) {
+      return(tibble::tibble())
+    }
+
+    out <- wide_frame %>%
+      dplyr::select(dplyr::all_of(cols)) %>%
+      dplyr::arrange(.data$date)
+
+    if (isTRUE(complete)) {
+      out <- out %>%
+        dplyr::filter(stats::complete.cases(dplyr::pick(dplyr::all_of(c(target_market, benchmark_market)))))
+    }
+
+    out
+  }
+
+  context_prices_wide <- context_curves %>%
+    dplyr::filter(.data$curve_point_num == 1) %>%
+    dplyr::select(.data$date, .data$market, .data$value) %>%
+    tidyr::pivot_wider(names_from = "market", values_from = "value") %>%
+    dplyr::arrange(.data$date)
+
+  target_analysis <- purrr::map(targets, function(mkt) {
+    pair_all <- pair_frame_from_wide(all_returns_wide, mkt, complete = FALSE)
+    pair_context <- pair_frame_from_wide(context_returns_wide, mkt, complete = TRUE)
+    price_context <- pair_frame_from_wide(context_prices_wide, mkt, complete = TRUE)
+
+    fit_stats <- if (nrow(pair_context) >= 20L) {
+      ea_simple_regression_stats(
+        x = pair_context[[benchmark]],
+        y = pair_context[[mkt]],
+        min_obs = 20L
+      )
+    } else {
+      ea_simple_regression_stats(numeric(), numeric(), min_obs = 20L)
+    }
+
+    price_fit <- if (nrow(price_context) >= 60L) {
+      ea_simple_regression_stats(
+        x = price_context[[benchmark]],
+        y = price_context[[mkt]],
+        min_obs = 60L
+      )
+    } else {
+      ea_simple_regression_stats(numeric(), numeric(), min_obs = 60L)
+    }
+
+    rolling_df <- if (nrow(pair_all) > 0L) {
+      rolling_stats <- rolling_pair_stats_cpp(
+        x = pair_all[[benchmark]],
+        y = pair_all[[mkt]],
+        window = window,
+        min_obs = 10L
+      )
+
+      tibble::tibble(
+        date = pair_all$date,
+        market = mkt,
+        beta = rolling_stats$beta,
+        r_squared = rolling_stats$r_squared,
+        n_obs = rolling_stats$n_obs
+      )
+    } else {
+      tibble::tibble(date = as.Date(character()), market = character(), beta = numeric(), r_squared = numeric(), n_obs = integer())
+    }
+
+    list(
       market = mkt,
-      beta = x_row$estimate,
-      r_squared = glance_fit$r.squared,
-      std_error = x_row$std.error
+      pair_all = pair_all,
+      pair_context = pair_context,
+      price_context = price_context,
+      fit = fit_stats,
+      price_fit = price_fit,
+      rolling = rolling_df
+    )
+  })
+  names(target_analysis) <- targets
+
+  pair_complete_counts <- purrr::map_int(target_analysis, ~ .x$fit$n_obs)
+  if (length(targets) == 0L || max(pair_complete_counts, 0L) < 20L) {
+    return(list(
+      available_markets = available_markets,
+      history_context = history_context,
+      history_context_label = ea_history_context_label(history_context),
+      display_window = display_window,
+      context_window = context_window,
+      hedge_ratios = empty_ratios,
+      rolling_beta = empty_rolling,
+      hedge_effectiveness = empty_effectiveness,
+      residual_timeseries = empty_residual,
+      ou_fit = empty_ou,
+      cross_hedge_matrix = empty_cross,
+      per_tenor_ratios = empty_tenor,
+      ratio_stability = empty_stability,
+      hedge_cost = empty_cost,
+      stress_period_comparison = empty_stress,
+      residual_with_bands = empty_bands,
+      kpis = tibble::tibble(title = character(), value = character(), delta = character(), status = character()),
+      notes = c("Cross-hedging needs at least one target with enough overlapping benchmark history inside the selected context window."),
+      assumptions = c(paste0("Rolling window: ", window, " trading days."))
+    ))
+  }
+
+  rolling_beta_context_full <- purrr::map_dfr(target_analysis, function(item) {
+    item$rolling %>%
+      dplyr::filter(
+        .data$date >= context_window[[1]],
+        .data$date <= context_window[[2]],
+        !is.na(.data$beta)
+      )
+  })
+
+  rolling_beta <- rolling_beta_context_full %>%
+    dplyr::filter(.data$date >= display_window[[1]], .data$date <= display_window[[2]])
+
+  hedge_ratios <- purrr::map_dfr(target_analysis, function(item) {
+    tibble::tibble(
+      market = item$market,
+      beta = item$fit$beta,
+      r_squared = item$fit$r_squared,
+      std_error = item$fit$std_error
     )
   })
 
-  # --- rolling_beta: rolling OLS beta over time ---
-  rolling_beta <- purrr::map_dfr(targets, function(mkt) {
-    y_col <- returns_wide[[mkt]]
-    x_col <- returns_wide[[benchmark]]
+  hedge_effectiveness <- purrr::map_dfr(target_analysis, function(item) {
+    if (!is.finite(item$fit$beta) || nrow(item$pair_context) < 20L) {
+      return(tibble::tibble(market = item$market, unhedged_vol = NA_real_, hedged_vol = NA_real_, vol_reduction_pct = NA_real_))
+    }
 
-    roll_beta <- slider::slide2_dbl(
-      y_col, x_col,
-      ~ {
-        if (length(.x) < 10) return(NA_real_)
-        fit <- stats::lm(.x ~ .y)
-        stats::coef(fit)[[2]]
-      },
-      .before = window - 1L, .complete = TRUE
-    )
-
-    roll_r2 <- slider::slide2_dbl(
-      y_col, x_col,
-      ~ {
-        if (length(.x) < 10) return(NA_real_)
-        fit <- stats::lm(.x ~ .y)
-        broom::glance(fit)$r.squared
-      },
-      .before = window - 1L, .complete = TRUE
-    )
-
-    tibble::tibble(
-      date = returns_wide$date,
-      market = mkt,
-      beta = roll_beta,
-      r_squared = roll_r2
-    ) |> dplyr::filter(!is.na(.data$beta))
-  })
-
-  # --- hedge_effectiveness: hedged vs unhedged vol ---
-  hedge_effectiveness <- purrr::map_dfr(targets, function(mkt) {
-    df <- returns_wide |> dplyr::select(y = dplyr::all_of(mkt), x = dplyr::all_of(benchmark))
-    fit <- stats::lm(y ~ x, data = df)
-    resid <- stats::residuals(fit)
-
-    unhedged <- stats::sd(df$y, na.rm = TRUE) * annualize
+    resid <- item$fit$residuals
+    unhedged <- stats::sd(item$pair_context[[item$market]], na.rm = TRUE) * annualize
     hedged <- stats::sd(resid, na.rm = TRUE) * annualize
 
     tibble::tibble(
-      market = mkt,
+      market = item$market,
       unhedged_vol = unhedged,
       hedged_vol = hedged,
       vol_reduction_pct = 1 - hedged / unhedged
     )
   })
 
-  # --- residual_timeseries ---
-  residual_timeseries <- purrr::map_dfr(targets, function(mkt) {
-    df <- returns_wide |> dplyr::select("date", y = dplyr::all_of(mkt), x = dplyr::all_of(benchmark))
-    fit <- stats::lm(y ~ x, data = df)
+  residual_context <- purrr::map_dfr(target_analysis, function(item) {
+    if (!length(item$price_fit$residuals) || nrow(item$price_context) == 0L) {
+      return(tibble::tibble())
+    }
 
     tibble::tibble(
-      date = df$date,
-      market = mkt,
-      residual = as.numeric(stats::residuals(fit))
+      date = item$price_context$date,
+      market = item$market,
+      residual = as.numeric(item$price_fit$residuals)
     )
   })
 
-  # --- ou_fit: OU parameters on hedge residuals ---
+  residual_timeseries <- residual_context %>%
+    dplyr::filter(.data$date >= display_window[[1]], .data$date <= display_window[[2]])
+
   ou_fit <- purrr::map_dfr(targets, function(mkt) {
-    resid <- residual_timeseries |>
-      dplyr::filter(.data$market == mkt) |>
+    resid <- residual_context %>%
+      dplyr::filter(.data$market == mkt) %>%
       dplyr::pull(.data$residual)
 
-    if (length(resid) < 30) {
-      return(tibble::tibble(
-        market = mkt, theta = NA_real_, mu = NA_real_,
-        sigma = NA_real_, half_life = NA_real_
-      ))
+    if (length(resid) < 30L) {
+      return(tibble::tibble(market = mkt, theta = NA_real_, mu = NA_real_, sigma = NA_real_, half_life = NA_real_))
     }
-
-    # cumulative residual for OU fitting (levels, not returns)
-    cum_resid <- cumsum(resid)
 
     tryCatch({
-      ou <- RTL::fitOU(spread = cum_resid)
+      ou <- RTL::fitOU(spread = resid)
       tibble::tibble(
-        market = mkt, theta = ou$theta, mu = ou$mu,
-        sigma = ou$sigma, half_life = ou$halfLife
+        market = mkt,
+        theta = ou$theta,
+        mu = ou$mu,
+        sigma = ou$sigma,
+        half_life = ea_ou_half_life_days(ou$theta)
       )
-    }, error = function(e) {
-      tibble::tibble(
-        market = mkt, theta = NA_real_, mu = NA_real_,
-        sigma = NA_real_, half_life = NA_real_
-      )
+    }, error = function(...) {
+      tibble::tibble(market = mkt, theta = NA_real_, mu = NA_real_, sigma = NA_real_, half_life = NA_real_)
     })
   })
 
-  # --- cross_hedge_matrix: pairwise beta/R-squared ---
-  all_pairs <- utils::combn(all_mkts, 2, simplify = FALSE)
+  residual_with_bands <- purrr::map_dfr(targets, function(mkt) {
+    resid_df <- residual_context %>% dplyr::filter(.data$market == mkt)
+    ou_params <- ou_fit %>% dplyr::filter(.data$market == mkt)
+
+    if (nrow(resid_df) == 0L) {
+      return(tibble::tibble())
+    }
+
+    if (nrow(ou_params) == 0L || is.na(ou_params$mu[[1]])) {
+      return(resid_df %>%
+        dplyr::mutate(
+          ou_mu = NA_real_,
+          band_1_lo = NA_real_,
+          band_1_hi = NA_real_,
+          band_2_lo = NA_real_,
+          band_2_hi = NA_real_
+        ) %>%
+        dplyr::filter(.data$date >= display_window[[1]], .data$date <= display_window[[2]]))
+    }
+
+    ou_mu <- ou_params$mu[[1]]
+    ou_sig <- ea_ou_stationary_sd(ou_params$theta[[1]], ou_params$sigma[[1]])
+
+    resid_df %>%
+      dplyr::mutate(
+        ou_mu = ou_mu,
+        band_1_lo = ou_mu - ou_sig,
+        band_1_hi = ou_mu + ou_sig,
+        band_2_lo = ou_mu - 2 * ou_sig,
+        band_2_hi = ou_mu + 2 * ou_sig
+      ) %>%
+      dplyr::filter(.data$date >= display_window[[1]], .data$date <= display_window[[2]])
+  })
+
+  all_pairs <- utils::combn(available_markets, 2, simplify = FALSE)
   cross_hedge_matrix <- purrr::map_dfr(all_pairs, function(pr) {
-    if (!all(pr %in% names(returns_wide))) {
-      return(tibble::tibble(
-        market_x = pr[1], market_y = pr[2], beta = NA_real_, r_squared = NA_real_
-      ))
+    if (!all(c("date", pr) %in% names(context_returns_wide))) {
+      return(tibble::tibble(market_x = pr[1], market_y = pr[2], beta = NA_real_, r_squared = NA_real_))
     }
-    df <- returns_wide |> dplyr::select(x = dplyr::all_of(pr[1]), y = dplyr::all_of(pr[2]))
-    fit <- stats::lm(y ~ x, data = df)
+
+    df <- ea_complete_market_frame(context_returns_wide, pr)
+    fit_stats <- ea_simple_regression_stats(
+      x = df[[pr[1]]],
+      y = df[[pr[2]]],
+      min_obs = 20L
+    )
+
+    if (!is.finite(fit_stats$beta)) {
+      return(tibble::tibble(market_x = pr[1], market_y = pr[2], beta = NA_real_, r_squared = NA_real_))
+    }
+
     tibble::tibble(
-      market_x = pr[1], market_y = pr[2],
-      beta = stats::coef(fit)[["x"]],
-      r_squared = broom::glance(fit)$r.squared
+      market_x = pr[1],
+      market_y = pr[2],
+      beta = fit_stats$beta,
+      r_squared = fit_stats$r_squared
     )
   })
 
-  # --- per_tenor_ratios: OLS beta at each tenor ---
-  per_tenor_ratios <- purrr::map_dfr(targets, function(mkt) {
-    all_tenor_data <- ea_load_dataset("commodity_curve_long") |>
-      dplyr::filter(.data$market %in% c(mkt, benchmark))
-
-    tenor_nums <- sort(unique(all_tenor_data$curve_point_num))
-
-    purrr::map_dfr(tenor_nums, function(tn) {
-      wide <- all_tenor_data |>
-        dplyr::filter(.data$curve_point_num == tn) |>
-        dplyr::select("date", "market", "value") |>
-        tidyr::pivot_wider(names_from = "market", values_from = "value") |>
-        dplyr::arrange(.data$date) |>
-        stats::na.omit()
-
-      if (nrow(wide) < 30 || !all(c(mkt, benchmark) %in% names(wide))) {
-        return(tibble::tibble(market = mkt, tenor = tn, beta = NA_real_, r_squared = NA_real_))
-      }
-
-      y_ret <- suppressWarnings(diff(log(wide[[mkt]])))
-      x_ret <- suppressWarnings(diff(log(wide[[benchmark]])))
-      valid <- !is.na(y_ret) & !is.na(x_ret) & is.finite(y_ret) & is.finite(x_ret)
-      if (sum(valid) < 20) return(tibble::tibble(market = mkt, tenor = tn, beta = NA_real_, r_squared = NA_real_))
-
-      fit <- stats::lm(y_ret[valid] ~ x_ret[valid])
-      tibble::tibble(
-        market = mkt, tenor = tn,
-        beta = stats::coef(fit)[[2]],
-        r_squared = broom::glance(fit)$r.squared
+  tenor_returns <- context_curves %>%
+    dplyr::arrange(.data$market, .data$curve_point_num, .data$date) %>%
+    dplyr::group_by(.data$market, .data$curve_point_num) %>%
+    dplyr::mutate(
+      prev_value = dplyr::lag(.data$value),
+      raw_log_return = suppressWarnings(log(.data$value / .data$prev_value)),
+      log_return = dplyr::if_else(
+        is.finite(.data$value) & is.finite(.data$prev_value) & .data$value > 0 & .data$prev_value > 0,
+        .data$raw_log_return,
+        NA_real_
       )
-    })
-  })
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::filter(!is.na(.data$log_return)) %>%
+    dplyr::select(.data$date, .data$market, .data$curve_point_num, .data$log_return)
 
-  # --- ratio_stability: SD of rolling beta per target ---
-  ratio_stability <- rolling_beta |>
-    dplyr::group_by(.data$market) |>
-    dplyr::summarise(beta_sd = stats::sd(.data$beta, na.rm = TRUE), .groups = "drop")
+  tenor_returns_wide <- tenor_returns %>%
+    tidyr::pivot_wider(
+      id_cols = c("date", "curve_point_num"),
+      names_from = "market",
+      values_from = "log_return"
+    ) %>%
+    dplyr::arrange(.data$curve_point_num, .data$date)
 
-  # --- hedge_cost: roll yield of benchmark + residual basis risk ---
-  hedge_cost <- purrr::map_dfr(targets, function(mkt) {
-    eff <- hedge_effectiveness |> dplyr::filter(.data$market == mkt)
-
-    bench_curves <- ea_load_dataset("commodity_curve_long") |>
-      dplyr::filter(.data$market == benchmark, .data$curve_point_num %in% c(1L, 2L))
-
-    bench_wide <- bench_curves |>
-      dplyr::select("date", "curve_point_num", "value") |>
-      tidyr::pivot_wider(names_from = "curve_point_num", values_from = "value") |>
-      dplyr::filter(!is.na(.data$`1`), !is.na(.data$`2`)) |>
-      dplyr::arrange(.data$date)
-
-    if (nrow(bench_wide) == 0) {
-      return(tibble::tibble(market = mkt, roll_cost = NA_real_, basis_risk_cost = NA_real_))
-    }
-
-    latest <- bench_wide |> dplyr::filter(.data$date == max(.data$date))
-    roll_cost <- if (nrow(latest) > 0 && latest$`1`[1] > 0) {
-      (latest$`1`[1] - latest$`2`[1]) / latest$`1`[1] * 12
-    } else {
-      NA_real_
-    }
-
-    tibble::tibble(
-      market = mkt,
-      roll_cost = roll_cost,
-      basis_risk_cost = if (nrow(eff) > 0) eff$hedged_vol[1] else NA_real_
-    )
-  })
-
-  # --- stress_period_comparison: normal vs high-vol period R-squared ---
-  stress_period_comparison <- tryCatch({
-    vol_series <- returns_wide[[benchmark]]
-    roll_vol <- slider::slide_dbl(vol_series, ~ stats::sd(.x, na.rm = TRUE), .before = 19L, .complete = TRUE)
-    is_stress <- roll_vol > stats::quantile(roll_vol, 0.75, na.rm = TRUE)
+  tenor_splits <- split(tenor_returns_wide, tenor_returns_wide$curve_point_num)
+  per_tenor_ratios <- purrr::imap_dfr(tenor_splits, function(df, tenor_key) {
+    tenor <- suppressWarnings(as.integer(tenor_key))
 
     purrr::map_dfr(targets, function(mkt) {
-      if (!mkt %in% names(returns_wide)) return(tibble::tibble())
+      if (!all(c("date", benchmark, mkt) %in% names(df))) {
+        return(tibble::tibble(market = mkt, tenor = tenor, beta = NA_real_, r_squared = NA_real_))
+      }
 
-      normal_idx <- !is_stress & !is.na(returns_wide[[mkt]]) & !is.na(returns_wide[[benchmark]])
-      stress_idx <- is_stress & !is.na(returns_wide[[mkt]]) & !is.na(returns_wide[[benchmark]])
+      pair_df <- ea_complete_market_frame(df, c(benchmark, mkt))
+      fit_stats <- ea_simple_regression_stats(
+        x = pair_df[[benchmark]],
+        y = pair_df[[mkt]],
+        min_obs = 20L
+      )
 
-      r2_normal <- if (sum(normal_idx, na.rm = TRUE) >= 20) {
-        fit <- stats::lm(returns_wide[[mkt]][normal_idx] ~ returns_wide[[benchmark]][normal_idx])
-        summary(fit)$r.squared
-      } else NA_real_
-
-      r2_stress <- if (sum(stress_idx, na.rm = TRUE) >= 20) {
-        fit <- stats::lm(returns_wide[[mkt]][stress_idx] ~ returns_wide[[benchmark]][stress_idx])
-        summary(fit)$r.squared
-      } else NA_real_
-
-      tibble::tibble(market = mkt, r2_normal = r2_normal, r2_stress = r2_stress)
+      tibble::tibble(
+        market = mkt,
+        tenor = tenor,
+        beta = fit_stats$beta,
+        r_squared = fit_stats$r_squared
+      )
     })
-  }, error = function(e) {
-    tibble::tibble(market = character(), r2_normal = numeric(), r2_stress = numeric())
   })
 
-  # --- residual_with_bands: cumulative residual + OU bands ---
-  residual_with_bands <- purrr::map_dfr(targets, function(mkt) {
-    resid_df <- residual_timeseries |> dplyr::filter(.data$market == mkt)
-    ou_params <- ou_fit |> dplyr::filter(.data$market == mkt)
+  ratio_stability <- rolling_beta_context_full %>%
+    dplyr::group_by(.data$market) %>%
+    dplyr::summarise(beta_sd = stats::sd(.data$beta, na.rm = TRUE), .groups = "drop")
 
-    if (nrow(ou_params) == 0 || is.na(ou_params$mu[1])) {
-      return(resid_df |> dplyr::mutate(ou_mu = NA_real_, band_1_lo = NA_real_, band_1_hi = NA_real_,
-                                        band_2_lo = NA_real_, band_2_hi = NA_real_))
+  latest_curves <- all_curves %>%
+    dplyr::filter(.data$date <= anchor_date) %>%
+    dplyr::group_by(.data$market) %>%
+    dplyr::filter(.data$date == max(.data$date, na.rm = TRUE)) %>%
+    dplyr::ungroup()
+
+  hedge_cost <- hedge_ratios %>%
+    dplyr::transmute(market = .data$market, r_squared = .data$r_squared) %>%
+    dplyr::left_join(
+      latest_curves %>%
+        dplyr::filter(.data$curve_point_num %in% c(1, 2)) %>%
+        dplyr::select(.data$market, .data$curve_point_num, .data$value) %>%
+        tidyr::pivot_wider(names_from = "curve_point_num", values_from = "value", names_prefix = "m") %>%
+        dplyr::transmute(
+          market = .data$market,
+          roll_cost = dplyr::if_else(
+            !is.na(.data$m1) & !is.na(.data$m2) & .data$m1 != 0,
+            abs((.data$m1 - .data$m2) / .data$m1) * 12,
+            NA_real_
+          )
+        ),
+      by = "market"
+    ) %>%
+    dplyr::transmute(
+      market = .data$market,
+      roll_cost = .data$roll_cost,
+      basis_risk_cost = 1 - .data$r_squared
+    )
+
+  benchmark_series <- all_returns %>%
+    dplyr::filter(.data$market == benchmark) %>%
+    dplyr::select(.data$date, benchmark = .data$log_return) %>%
+    dplyr::arrange(.data$date) %>%
+    dplyr::mutate(
+      benchmark_vol = slider::slide_dbl(
+        .data$benchmark,
+        ~ {
+          vals <- stats::na.omit(.x)
+          if (length(vals) < 10L) return(NA_real_)
+          stats::sd(vals) * annualize
+        },
+        .before = 19L,
+        .complete = TRUE
+      )
+    ) %>%
+    dplyr::filter(.data$date >= context_window[[1]], .data$date <= context_window[[2]])
+
+  stress_cutoff <- stats::quantile(benchmark_series$benchmark_vol, 0.75, na.rm = TRUE)
+
+  stress_period_comparison <- purrr::map_dfr(target_analysis, function(item) {
+    if (nrow(item$pair_context) == 0L) {
+      return(tibble::tibble(market = item$market, r2_normal = NA_real_, r2_stress = NA_real_))
     }
 
-    cum_resid <- cumsum(resid_df$residual)
-    ou_mu  <- ou_params$mu[1]
-    ou_sig <- ou_params$sigma[1]
+    df <- item$pair_context %>%
+      dplyr::rename(y = dplyr::all_of(item$market), x = dplyr::all_of(benchmark)) %>%
+      dplyr::left_join(
+        benchmark_series %>% dplyr::select(.data$date, .data$benchmark_vol),
+        by = "date"
+      ) %>%
+      dplyr::filter(!is.na(.data$benchmark_vol))
+
+    if (nrow(df) < 40L || !is.finite(stress_cutoff)) {
+      return(tibble::tibble(market = item$market, r2_normal = NA_real_, r2_stress = NA_real_))
+    }
+
+    normal_df <- df %>% dplyr::filter(.data$benchmark_vol < stress_cutoff)
+    stress_df <- df %>% dplyr::filter(.data$benchmark_vol >= stress_cutoff)
+    normal_fit <- ea_simple_regression_stats(normal_df$x, normal_df$y, min_obs = 20L)
+    stress_fit <- ea_simple_regression_stats(stress_df$x, stress_df$y, min_obs = 20L)
 
     tibble::tibble(
-      date = resid_df$date,
-      market = mkt,
-      residual = cum_resid,
-      ou_mu = ou_mu,
-      band_1_lo = ou_mu - ou_sig,
-      band_1_hi = ou_mu + ou_sig,
-      band_2_lo = ou_mu - 2 * ou_sig,
-      band_2_hi = ou_mu + 2 * ou_sig
+      market = item$market,
+      r2_normal = normal_fit$r_squared,
+      r2_stress = stress_fit$r_squared
     )
   })
 
-  # --- KPIs ---
-  # Best proxy hedge by R-squared
-  best_proxy <- cross_hedge_matrix |>
-    dplyr::filter(.data$market_x != .data$market_y) |>
+  best_proxy <- cross_hedge_matrix %>%
+    dplyr::filter(.data$market_x != .data$market_y) %>%
     dplyr::slice_max(.data$r_squared, n = 1, with_ties = FALSE)
 
-  primary_hedge <- if (length(targets) > 0) hedge_ratios |> dplyr::filter(.data$market == targets[1]) else hedge_ratios[0, ]
-  primary_eff   <- if (length(targets) > 0) hedge_effectiveness |> dplyr::filter(.data$market == targets[1]) else hedge_effectiveness[0, ]
-  primary_ou    <- if (length(targets) > 0) ou_fit |> dplyr::filter(.data$market == targets[1]) else ou_fit[0, ]
-  primary_stab  <- if (length(targets) > 0) ratio_stability |> dplyr::filter(.data$market == targets[1]) else ratio_stability[0, ]
+  primary_target <- if (length(targets) > 0L) targets[[1]] else NA_character_
+  primary_hedge <- hedge_ratios %>% dplyr::filter(.data$market == primary_target)
+  primary_eff <- hedge_effectiveness %>% dplyr::filter(.data$market == primary_target)
+  primary_ou <- ou_fit %>% dplyr::filter(.data$market == primary_target)
+  primary_stab <- ratio_stability %>% dplyr::filter(.data$market == primary_target)
 
   kpis <- tibble::tribble(
     ~title, ~value, ~delta, ~status,
     "Best Proxy",
-    if (nrow(best_proxy) > 0) paste(best_proxy$market_x[1], "vs", best_proxy$market_y[1]) else "N/A",
-    if (nrow(best_proxy) > 0) paste0("R\u00b2=", scales::number(best_proxy$r_squared[1], accuracy = 0.01)) else "",
-    "positive",
+    if (nrow(best_proxy) > 0L) paste(best_proxy$market_x[[1]], "vs", best_proxy$market_y[[1]]) else "N/A",
+    if (nrow(best_proxy) > 0L) paste0("R\u00b2=", scales::number(best_proxy$r_squared[[1]], accuracy = 0.01)) else "",
+    "neutral",
 
     "Hedge Ratio",
-    if (nrow(primary_hedge) > 0) scales::number(primary_hedge$beta[1], accuracy = 0.01) else "N/A",
-    if (length(targets) > 0) paste0("vs ", benchmark) else "",
+    if (nrow(primary_hedge) > 0L && is.finite(primary_hedge$beta[[1]])) scales::number(primary_hedge$beta[[1]], accuracy = 0.01) else "N/A",
+    paste0("vs ", benchmark),
     "neutral",
 
     "Effectiveness",
-    if (nrow(primary_eff) > 0) scales::percent(primary_eff$vol_reduction_pct[1], accuracy = 1) else "N/A",
-    "vol reduction",
-    if (nrow(primary_eff) > 0 && primary_eff$vol_reduction_pct[1] > 0.5) "positive" else "warning",
+    if (nrow(primary_eff) > 0L && is.finite(primary_eff$vol_reduction_pct[[1]])) scales::percent(primary_eff$vol_reduction_pct[[1]], accuracy = 1) else "N/A",
+    ea_history_context_label(history_context),
+    "neutral",
 
     "Basis Risk",
-    if (nrow(primary_hedge) > 0) scales::number(1 - primary_hedge$r_squared[1], accuracy = 0.01) else "N/A",
+    if (nrow(primary_hedge) > 0L && is.finite(primary_hedge$r_squared[[1]])) scales::number(1 - primary_hedge$r_squared[[1]], accuracy = 0.01) else "N/A",
     "1 - R\u00b2",
-    if (nrow(primary_hedge) > 0 && (1 - primary_hedge$r_squared[1]) > 0.3) "warning" else "neutral",
+    "neutral",
 
     "Ratio Stability",
-    if (nrow(primary_stab) > 0) scales::number(primary_stab$beta_sd[1], accuracy = 0.01) else "N/A",
-    "rolling beta SD",
-    if (nrow(primary_stab) > 0 && primary_stab$beta_sd[1] > 0.15) "warning" else "neutral",
+    if (nrow(primary_stab) > 0L && is.finite(primary_stab$beta_sd[[1]])) scales::number(primary_stab$beta_sd[[1]], accuracy = 0.01) else "N/A",
+    paste0(window, "d rolling"),
+    "neutral",
 
     "Half-Life",
-    if (nrow(primary_ou) > 0 && !is.na(primary_ou$half_life[1])) paste0(round(primary_ou$half_life[1]), "d") else "N/A",
-    "OU mean-rev",
-    if (nrow(primary_ou) > 0 && !is.na(primary_ou$half_life[1]) && primary_ou$half_life[1] < 30) "positive" else "neutral"
-  )
-
-  notes <- c(
-    "Hedge ratios computed via OLS regression of front-month log returns.",
-    "Rolling beta uses a sliding window; confidence bands reflect \u00b1 1 std error.",
-    "OU mean-reversion fit via RTL::fitOU on cumulative hedge residuals."
-  )
-  assumptions <- c(
-    paste0("Rolling window: ", window, " trading days."),
-    "Roll cost estimated from benchmark M1-M2 spread annualised at 12x.",
-    "Stress period = top quartile of rolling 20d benchmark volatility."
+    if (nrow(primary_ou) > 0L && is.finite(primary_ou$half_life[[1]])) paste0(round(primary_ou$half_life[[1]]), "d") else "N/A",
+    "context residual",
+    "neutral"
   )
 
   list(
+    available_markets = available_markets,
+    history_context = history_context,
+    history_context_label = ea_history_context_label(history_context),
+    display_window = display_window,
+    context_window = context_window,
     hedge_ratios = hedge_ratios,
     rolling_beta = rolling_beta,
     hedge_effectiveness = hedge_effectiveness,
@@ -345,7 +564,15 @@ ea_calc_hedging <- function(filters) {
     stress_period_comparison = stress_period_comparison,
     residual_with_bands = residual_with_bands,
     kpis = kpis,
-    notes = notes,
-    assumptions = assumptions
+    notes = c(
+      "Rolling hedge-ratio charts use the selected display range, but the regression window is allowed to warm up before the visible start date.",
+      paste0("Cross-hedge ranking, hedge effectiveness, and tenor ratios use the ", ea_history_context_label(history_context), " history window ending on the display-range end date."),
+      "Residual bands come from an OU fit on price-level hedge residuals and use the stationary OU standard deviation."
+    ),
+    assumptions = c(
+      paste0("Rolling window: ", window, " trading days."),
+      "Roll cost is estimated from the latest available M1-M2 spread at the display-range end date.",
+      "Stress regime = top quartile of rolling 20d benchmark volatility inside the selected history context."
+    )
   )
 }

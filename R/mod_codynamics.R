@@ -4,149 +4,440 @@ mod_codynamics_ui <- function(id) {
 
 mod_codynamics_server <- function(id, filters, data_timestamp) {
   shiny::moduleServer(id, function(input, output, session) {
-    page_data <- shiny::reactive(ea_calc_codynamics(filters()))
-
-    mod_footer_notes_server(
-      "footer_notes",
-      notes = shiny::reactive(list(
-        notes = page_data()$notes,
-        assumptions = page_data()$assumptions,
-        timestamp = data_timestamp()
-      )),
-      title = "Correlation notes"
+    view_choices <- c(
+      "Correlation" = "correlation",
+      "Pair" = "pair",
+      "Rates" = "rates"
     )
+    history_basis_choices <- c(
+      "Trailing" = "trailing",
+      "Full" = "full"
+    )
+    history_year_choices <- ea_history_year_choices()
+
+    empty_page_data <- function(error_message = NULL) {
+      list(
+        correlation_matrix = tibble::tibble(),
+        correlation_timeseries = tibble::tibble(),
+        spread_timeseries = tibble::tibble(),
+        spread_zscore = tibble::tibble(),
+        beta_matrix = tibble::tibble(),
+        pca_decomposition = tibble::tibble(),
+        treasury_curve_snapshot = tibble::tibble(),
+        treasury_betas = tibble::tibble(),
+        connectedness_score = NA_real_,
+        correlation_breaks = tibble::tibble(),
+        coint_residual = tibble::tibble(),
+        rolling_beta_ts = tibble::tibble(),
+        kpis = tibble::tibble(),
+        notes = character(),
+        assumptions = character(),
+        .error = error_message
+      )
+    }
+
+    selected_context_basis <- shiny::reactive({
+      current <- ea_coalesce(input$cod_context_basis, "trailing")
+      if (current %in% unname(history_basis_choices)) current else "trailing"
+    })
+
+    selected_context_years <- shiny::reactive({
+      current <- suppressWarnings(as.integer(ea_coalesce(input$cod_context_years, "5")[[1]]))
+      if (!is.finite(current) || is.na(current) || current < 1L) {
+        5L
+      } else {
+        min(current, 30L)
+      }
+    })
+
+    selected_context <- shiny::reactive({
+      if (identical(selected_context_basis(), "full")) {
+        "full"
+      } else {
+        paste0(selected_context_years(), "y")
+      }
+    })
+
+    page_data <- shiny::reactive({
+      tryCatch(
+        {
+          result <- ea_calc_codynamics(filters(), history_context = selected_context())
+          result$.error <- NULL
+          result
+        },
+        error = function(e) empty_page_data(conditionMessage(e))
+      )
+    })
+
+    pair_choices <- shiny::reactive({
+      choices <- unique(c(
+        page_data()$correlation_timeseries$pair,
+        page_data()$rolling_beta_ts$pair,
+        page_data()$coint_residual$pair
+      ))
+      choices <- choices[!is.na(choices) & nzchar(choices)]
+      sort(choices)
+    })
+
+    default_pair_choice <- shiny::reactive({
+      choices <- pair_choices()
+      if (length(choices) == 0L) {
+        return(NA_character_)
+      }
+
+      cb <- page_data()$correlation_breaks
+      if (nrow(cb) > 0L) {
+        candidate <- cb %>%
+          dplyr::mutate(abs_move = abs(.data$corr_delta)) %>%
+          dplyr::arrange(dplyr::desc(.data$abs_move)) %>%
+          dplyr::slice(1) %>%
+          dplyr::pull(.data$pair)
+        if (length(candidate) == 1L && candidate %in% choices) {
+          return(candidate)
+        }
+      }
+
+      choices[[1]]
+    })
+
+    selected_pair <- shiny::reactive({
+      choices <- pair_choices()
+      if (length(choices) == 0L) {
+        return(NA_character_)
+      }
+
+      current <- ea_coalesce(input$focus_pair, default_pair_choice())
+      if (current %in% choices) {
+        current
+      } else {
+        default_pair_choice()
+      }
+    })
+
+    selected_coint_pair <- shiny::reactive({
+      cr <- page_data()$coint_residual
+      if (is.null(cr) || nrow(cr) == 0L || !"pair" %in% names(cr)) {
+        return(NA_character_)
+      }
+
+      available_pairs <- unique(cr$pair)
+      focus_pair <- selected_pair()
+      if (length(focus_pair) == 1L && focus_pair %in% available_pairs) {
+        focus_pair
+      } else {
+        available_pairs[[1]]
+      }
+    })
+
+    selected_view <- shiny::reactive({
+      current <- ea_coalesce(input$cod_view, "correlation")
+      if (current %in% unname(view_choices)) current else "correlation"
+    })
+
+    selected_view_spec <- shiny::reactive({
+      switch(
+        selected_view(),
+        correlation = list(
+          plot_title = "Correlation Matrix",
+          plot_output = session$ns("corr_heatmap"),
+          table_title = "Pair Table",
+          table_output = session$ns("corr_breaks_table"),
+          plot_height = "340px"
+        ),
+        pair = list(
+          plot_title = "Pair Dynamics",
+          plot_output = session$ns("rolling_corr"),
+          table_title = "Pair Detail",
+          table_output = session$ns("pair_detail_table"),
+          plot_height = "340px"
+        ),
+        rates = list(
+          plot_title = "Rate Betas",
+          plot_output = session$ns("treasury_bars"),
+          table_title = "UST Curve",
+          table_output = session$ns("treasury_curve_table"),
+          plot_height = "340px"
+        )
+      )
+    })
 
     output$page <- shiny::renderUI({
       ns <- session$ns
       current_filters <- filters()
+      has_cross_market <- length(unique(current_filters$commodities)) >= 2L
+      pair_options <- pair_choices()
+      pair_selected <- selected_pair()
+      if (!(length(pair_selected) == 1L && pair_selected %in% pair_options)) {
+        pair_selected <- if (!is.na(default_pair_choice())) default_pair_choice() else ""
+      }
+      selected_view_choice <- selected_view()
+      selected_context_basis_choice <- selected_context_basis()
+      selected_context_years_choice <- as.character(selected_context_years())
+      pair_visible_condition <- sprintf("input['%s'] === 'pair'", ns("cod_view"))
+      years_visible_condition <- sprintf("input['%s'] !== 'full'", ns("cod_context_basis"))
 
-      if (length(current_filters$commodities) == 0L) {
+      if (length(unique(current_filters$commodities)) < 2L) {
         return(htmltools::tagList(
-          ea_selected_filters_ribbon(current_filters, data_timestamp()),
           ea_empty_state_card(
-            title = "Select products to populate correlation views",
-            body = "Co-dynamics aggregates rolling correlation, intercommodity spreads, PCA structure, and transmission diagnostics across the selected products.",
-            hint = "Add at least two products or keep a benchmark product active."
-          ),
-          mod_footer_notes_ui(ns("footer_notes"))
+            title = "Select two products",
+            body = "Add another product."
+          )
+        ))
+      }
+
+      if (!is.null(page_data()$.error)) {
+        return(htmltools::tagList(
+          ea_empty_state_card(
+            title = "Data unavailable",
+            body = "Current payload failed.",
+            hint = page_data()$.error
+          )
         ))
       }
 
       htmltools::tagList(
-        ea_selected_filters_ribbon(current_filters, data_timestamp()),
-        mod_kpi_strip_ui(ns("kpi_strip")),
-        # Row 1: Rolling Correlation | Correlation Matrix Heatmap
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          ea_plotly_card(
-            title = "Rolling Correlation with CI Bands",
-            subtitle = "Sliding-window correlation with 2-sigma confidence bands.",
-            output_id = ns("rolling_corr"),
-            height = "250px"
-          ),
-          ea_plotly_card(
-            title = "Correlation Matrix",
-            subtitle = "Current-window pairwise dependencies.",
-            output_id = ns("corr_heatmap"),
-            height = "250px"
+        if (has_cross_market) {
+          htmltools::tags$div(
+            class = "ea-toolbar ea-toolbar--correlations",
+            htmltools::tags$div(
+              class = "ea-toolbar__row",
+              shiny::conditionalPanel(
+                condition = pair_visible_condition,
+                htmltools::tags$div(
+                  class = "ea-toolbar__field ea-toolbar__field--sm",
+                  ea_toolbar_select(
+                    input_id = ns("focus_pair"),
+                    label = "Focus Pair",
+                    choices = if (length(pair_options) > 0L) {
+                      stats::setNames(pair_options, pair_options)
+                    } else {
+                      c("No pair available" = "")
+                    },
+                    selected = pair_selected
+                  )
+                )
+              ),
+              htmltools::tags$div(
+                class = "ea-toolbar__field ea-toolbar__field--sm",
+                ea_toolbar_select(
+                  input_id = ns("cod_view"),
+                  label = "View",
+                  choices = view_choices,
+                  selected = selected_view_choice
+                )
+              ),
+              htmltools::tags$div(
+                class = "ea-toolbar__field ea-toolbar__field--sm",
+                ea_toolbar_select(
+                  input_id = ns("cod_context_basis"),
+                  label = "Basis",
+                  choices = history_basis_choices,
+                  selected = selected_context_basis_choice
+                )
+              ),
+              shiny::conditionalPanel(
+                condition = years_visible_condition,
+                htmltools::tags$div(
+                  class = "ea-toolbar__field ea-toolbar__field--sm",
+                  ea_toolbar_select(
+                    input_id = ns("cod_context_years"),
+                    label = "Years",
+                    choices = history_year_choices,
+                    selected = selected_context_years_choice
+                  )
+                )
+              )
+            )
           )
-        ),
-        # Row 2: PCA Factor Structure | Treasury Factor Sensitivity
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          ea_plotly_card(
-            title = "PCA Factor Structure",
-            subtitle = "Principal component loadings per market.",
-            output_id = ns("pca_bars"),
-            height = "250px"
-          ),
-          ea_plotly_card(
-            title = "Treasury Factor Sensitivity",
-            subtitle = "OLS betas on UST level, slope, and curvature changes.",
-            output_id = ns("treasury_bars"),
-            height = "250px"
+        },
+        if (!has_cross_market) {
+          ea_empty_state_card(
+            title = "Add a second product",
+            body = "Pair views need two products."
           )
-        ),
-        # Row 3: Spread Time Series | Spread Z-Score Dashboard
-        bslib::layout_columns(
-          col_widths = c(7, 5),
-          ea_plotly_card(
-            title = "Spread Time Series",
-            subtitle = "Price dislocation across active spread definitions.",
-            output_id = ns("spread_ts"),
-            height = "270px"
-          ),
-          ea_plotly_card(
-            title = "Spread Z-Score Dashboard",
-            subtitle = "Normalised spread extremity sorted by magnitude.",
-            output_id = ns("spread_zscore"),
-            height = "270px"
-          )
-        ),
-        # Row 4: Rolling Beta Dynamics | Cointegration Residual with OU Bands
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          ea_plotly_card(
-            title = "Rolling Beta Dynamics",
-            subtitle = "Sliding-window OLS beta per market pair.",
-            output_id = ns("rolling_beta"),
-            height = "250px"
-          ),
-          ea_plotly_card(
-            title = "Cointegration Residual",
-            subtitle = "OU-process mean-reversion bands on regression residual.",
-            output_id = ns("coint_residual"),
-            height = "250px"
-          )
-        ),
-        mod_footer_notes_ui(ns("footer_notes"))
+        },
+        if (has_cross_market) {
+          shiny::uiOutput(ns("view_panel"))
+        }
       )
     })
 
-    mod_kpi_strip_server("kpi_strip", kpis = shiny::reactive(page_data()$kpis))
+    output$view_panel <- shiny::renderUI({
+      view_spec <- selected_view_spec()
+      ea_module_view_panel(
+        plot_title = view_spec$plot_title,
+        plot_output_id = view_spec$plot_output,
+        table_title = view_spec$table_title,
+        table_output_id = view_spec$table_output,
+        plot_height = view_spec$plot_height
+      )
+    })
 
-    # ---- Rolling Correlation with CI Bands ----
+    output$corr_breaks_table <- reactable::renderReactable({
+      cb <- page_data()$correlation_breaks
+
+      if (nrow(cb) == 0L) {
+        return(ea_empty_reactable())
+      }
+
+      tbl <- cb %>%
+        dplyr::mutate(
+          corr_pct = dplyr::if_else(
+            is.finite(.data$corr_percentile),
+            scales::percent(.data$corr_percentile, accuracy = 1),
+            "N/A"
+          ),
+          abs_move = abs(.data$corr_delta)
+        ) %>%
+        dplyr::arrange(dplyr::desc(.data$abs_move)) %>%
+        dplyr::transmute(
+          pair = .data$pair,
+          corr = .data$current_corr,
+          delta = .data$corr_delta,
+          percentile = .data$corr_pct,
+          beta = .data$beta,
+          r_squared = .data$r_squared
+        )
+
+      reactable::reactable(
+        tbl,
+        theme = ea_reactable_theme(),
+        compact = TRUE,
+        highlight = TRUE,
+        columns = list(
+          pair = reactable::colDef(name = "Pair", minWidth = 140),
+          corr = reactable::colDef(
+            name = "Corr",
+            minWidth = 90,
+            format = reactable::colFormat(digits = 2),
+            style = function(value) {
+              list(color = if (is.na(value)) "#9aa6b2" else if (value >= 0) "#4da3a3" else "#d36e70")
+            }
+          ),
+          delta = reactable::colDef(
+            name = "20D Chg",
+            minWidth = 90,
+            format = reactable::colFormat(digits = 2)
+          ),
+          percentile = reactable::colDef(name = "Pct"),
+          beta = reactable::colDef(name = "Beta", format = reactable::colFormat(digits = 2)),
+          r_squared = reactable::colDef(name = "R2", format = reactable::colFormat(digits = 2))
+        )
+      )
+    })
+
+    output$pair_detail_table <- reactable::renderReactable({
+      pair_name <- selected_pair()
+
+      if (is.na(pair_name) || !nzchar(pair_name)) {
+        return(ea_empty_reactable())
+      }
+
+      pair_row <- page_data()$correlation_breaks %>%
+        dplyr::filter(.data$pair == pair_name)
+      resid_ts <- page_data()$coint_residual %>%
+        dplyr::filter(.data$pair == selected_coint_pair()) %>%
+        dplyr::arrange(.data$date)
+      latest_resid <- if (nrow(resid_ts) > 0L) utils::tail(resid_ts$residual, 1L) else NA_real_
+      resid_z <- if (nrow(pair_row) > 0L) pair_row$residual_z[[1]] else NA_real_
+
+      display <- tibble::tribble(
+        ~metric, ~value,
+        "Pair", pair_name,
+        "Latest Corr", if (nrow(pair_row) > 0L && is.finite(pair_row$current_corr[[1]])) scales::number(pair_row$current_corr[[1]], accuracy = 0.01) else "N/A",
+        "20D Corr Chg", if (nrow(pair_row) > 0L && is.finite(pair_row$corr_delta[[1]])) scales::number(pair_row$corr_delta[[1]], accuracy = 0.01) else "N/A",
+        "Corr Percentile", if (nrow(pair_row) > 0L && is.finite(pair_row$corr_percentile[[1]])) scales::percent(pair_row$corr_percentile[[1]], accuracy = 1) else "N/A",
+        "Context Beta", if (nrow(pair_row) > 0L && is.finite(pair_row$beta[[1]])) scales::number(pair_row$beta[[1]], accuracy = 0.01) else "N/A",
+        "Context R2", if (nrow(pair_row) > 0L && is.finite(pair_row$r_squared[[1]])) scales::number(pair_row$r_squared[[1]], accuracy = 0.01) else "N/A",
+        "Residual Z", if (is.finite(resid_z)) scales::number(resid_z, accuracy = 0.01) else "N/A"
+      )
+
+      reactable::reactable(
+        display,
+        pagination = FALSE,
+        compact = TRUE,
+        highlight = FALSE,
+        theme = ea_reactable_theme(),
+        columns = list(
+          metric = reactable::colDef(name = "Metric"),
+          value = reactable::colDef(name = "Value")
+        )
+      )
+    })
+
+    # ---- Rolling Correlation ----
     output$rolling_corr <- plotly::renderPlotly({
       ct <- page_data()$correlation_timeseries
-      palette <- c("#4da3a3", "#5a85c8", "#7f8b99", "#d2a157", "#c46e73", "#8ecf8e")
-
+      bt <- page_data()$rolling_beta_ts
       fig <- plotly::plot_ly()
+      pair_name <- selected_pair()
 
-      if (nrow(ct) == 0L) {
+      if (nrow(ct) == 0L || is.na(pair_name)) {
         return(ea_plotly_layout(fig, x_title = NULL, y_title = "Correlation"))
       }
 
-      for (i in seq_along(unique(ct$pair))) {
-        pair_name <- unique(ct$pair)[[i]]
-        df <- ct[ct$pair == pair_name, , drop = FALSE]
-        col <- palette[[((i - 1L) %% length(palette)) + 1L]]
+      df <- ct[ct$pair == pair_name, , drop = FALSE]
+      beta_df <- bt[bt$pair == pair_name, , drop = FALSE]
+      if (nrow(df) == 0L) {
+        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Correlation"))
+      }
 
-        fig <- fig |>
-          plotly::add_ribbons(
-            data = df,
-            x = ~date,
-            ymin = ~ci_lo,
-            ymax = ~ci_hi,
-            name = paste0(pair_name, " CI"),
-            line = list(color = "transparent"),
-            fillcolor = paste0(
-              substr(col, 1, 7),
-              "33"
-            ),
-            showlegend = FALSE,
-            hoverinfo = "skip"
-          ) |>
+      fig <- fig %>%
+        plotly::add_ribbons(
+          data = df,
+          x = ~date,
+          ymin = ~ci_lo,
+          ymax = ~ci_hi,
+          name = "Confidence band",
+          line = list(color = "transparent"),
+          fillcolor = "rgba(77,163,163,0.18)",
+          hoverinfo = "skip"
+        ) %>%
+        plotly::add_lines(
+          data = df,
+          x = ~date,
+          y = ~correlation,
+          name = pair_name,
+          line = list(color = "#4da3a3", width = 2.2),
+          hovertemplate = "%{x|%d %b %Y}<br>Correlation: %{y:.2f}<extra></extra>"
+        )
+
+      if (nrow(beta_df) > 0L) {
+        fig <- fig %>%
           plotly::add_lines(
-            data = df,
+            data = beta_df,
             x = ~date,
-            y = ~correlation,
-            name = pair_name,
-            line = list(color = col, width = 1.5),
-            hovertemplate = "%{x|%d %b %Y}<br>%{y:.2f}<extra>%{fullData.name}</extra>"
+            y = ~beta,
+            name = "Beta",
+            line = list(color = "#5a85c8", width = 1.8, dash = "dash"),
+            yaxis = "y2",
+            hovertemplate = "%{x|%d %b %Y}<br>Beta: %{y:.2f}<extra></extra>"
           )
       }
 
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Correlation")
+      fig <- fig %>%
+        plotly::layout(shapes = list(
+          list(
+            type = "line",
+            x0 = min(df$date),
+            x1 = max(df$date),
+            y0 = 0,
+            y1 = 0,
+            line = list(color = "#7f8b99", width = 1, dash = "dot")
+          )
+        ))
+
+      ea_plotly_layout(fig, x_title = NULL, y_title = "Correlation") %>%
+        plotly::layout(
+          yaxis = list(range = c(-1, 1)),
+          yaxis2 = list(
+            title = "Beta",
+            overlaying = "y",
+            side = "right",
+            color = "#9aa6b2",
+            showgrid = FALSE
+          )
+        )
     })
 
     # ---- Correlation Matrix Heatmap ----
@@ -155,6 +446,18 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
       if (nrow(cm) == 0L) {
         return(ea_plotly_layout(plotly::plot_ly(), x_title = NULL, y_title = NULL))
       }
+
+      market_order <- intersect(filters()$commodities, unique(c(cm$market_x, cm$market_y)))
+      if (length(market_order) == 0L) {
+        market_order <- sort(unique(c(cm$market_x, cm$market_y)))
+      }
+
+      cm <- cm %>%
+        dplyr::mutate(
+          market_x = factor(.data$market_x, levels = market_order),
+          market_y = factor(.data$market_y, levels = rev(market_order))
+        )
+
       dep_matrix <- stats::xtabs(correlation ~ market_y + market_x, data = cm)
 
       fig <- plotly::plot_ly(
@@ -163,43 +466,46 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
         z = unclass(dep_matrix),
         type = "heatmap",
         colors = c("#b35c60", "#17202b", "#4da3a3"),
-        showscale = FALSE,
+        zmin = -1,
+        zmax = 1,
+        colorbar = list(title = "Corr"),
         hovertemplate = "%{y} vs %{x}<br>%{z:.2f}<extra>correlation</extra>"
-      ) |>
-        plotly::layout(yaxis = list(autorange = "reversed"))
+      )
 
       ea_plotly_layout(fig, x_title = NULL, y_title = NULL, hovermode = "closest")
     })
 
-    # ---- PCA Factor Structure ----
-    output$pca_bars <- plotly::renderPlotly({
-      pca <- page_data()$pca_decomposition
-      pc_colors <- c("#4da3a3", "#5a85c8", "#d2a157")
+    output$treasury_curve_table <- reactable::renderReactable({
+      tc <- page_data()$treasury_curve_snapshot %>%
+        dplyr::arrange(.data$tenor_years)
 
-      fig <- plotly::plot_ly()
-
-      if (nrow(pca) == 0L || all(is.na(pca$PC1))) {
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Loading"))
+      if (nrow(tc) == 0L) {
+        return(ea_empty_reactable())
       }
 
-      for (i in seq_len(3)) {
-        pc_col <- paste0("PC", i)
-        if (!pc_col %in% names(pca)) next
-        fig <- fig |>
-          plotly::add_bars(
-            data = pca,
-            x = ~market,
-            y = stats::as.formula(paste0("~", pc_col)),
-            name = pc_col,
-            marker = list(color = pc_colors[[i]]),
-            hovertemplate = paste0("%{x}<br>", pc_col, ": %{y:.3f}<extra></extra>")
+      display <- tc %>%
+        dplyr::transmute(
+          tenor = .data$tenor,
+          yield = scales::number(.data$yield, accuracy = 0.01, suffix = "%"),
+          change_bps = dplyr::if_else(
+            is.finite(.data$change_bps),
+            sprintf("%+.1f bp", .data$change_bps),
+            "N/A"
           )
-      }
+        )
 
-      fig <- fig |>
-        plotly::layout(barmode = "group")
-
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Loading")
+      reactable::reactable(
+        display,
+        pagination = FALSE,
+        compact = TRUE,
+        highlight = TRUE,
+        theme = ea_reactable_theme(),
+        columns = list(
+          tenor = reactable::colDef(name = "Tenor"),
+          yield = reactable::colDef(name = "Yield"),
+          change_bps = reactable::colDef(name = "1D Change")
+        )
+      )
     })
 
     # ---- Treasury Factor Sensitivity ----
@@ -213,10 +519,14 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
 
       fig <- plotly::plot_ly()
 
+      if (nrow(tb) == 0L) {
+        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Beta"))
+      }
+
       for (fac in c("Level", "Slope", "Curvature")) {
         df_f <- tb[tb$factor == fac, , drop = FALSE]
         if (nrow(df_f) == 0L) next
-        fig <- fig |>
+        fig <- fig %>%
           plotly::add_bars(
             data = df_f,
             x = ~market,
@@ -227,157 +537,11 @@ mod_codynamics_server <- function(id, filters, data_timestamp) {
           )
       }
 
-      fig <- fig |>
+      fig <- fig %>%
         plotly::layout(barmode = "group")
 
       ea_plotly_layout(fig, x_title = NULL, y_title = "Beta")
     })
 
-    # ---- Spread Time Series (faceted subplots) ----
-    output$spread_ts <- plotly::renderPlotly({
-      st <- page_data()$spread_timeseries
-      spread_labels <- unique(st$spread_label)
-
-      if (length(spread_labels) == 0L) {
-        fig <- plotly::plot_ly() |>
-          plotly::add_annotations(text = "No spread data available", showarrow = FALSE)
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = NULL))
-      }
-
-      palette <- c("#4da3a3", "#5a85c8", "#d2a157")
-      sub_figs <- lapply(seq_along(spread_labels), function(i) {
-        lbl <- spread_labels[[i]]
-        df_sp <- st[st$spread_label == lbl, , drop = FALSE]
-        col <- palette[[((i - 1L) %% length(palette)) + 1L]]
-        plotly::plot_ly(
-          data = df_sp,
-          x = ~date,
-          y = ~value,
-          type = "scatter",
-          mode = "lines",
-          name = lbl,
-          line = list(color = col, width = 1.8),
-          hovertemplate = paste0(lbl, "<br>%{x|%d %b %Y}<br>%{y:.2f}<extra></extra>")
-        )
-      })
-
-      fig <- plotly::subplot(sub_figs, nrows = length(spread_labels), shareX = TRUE, titleX = FALSE)
-      ea_plotly_layout(fig, x_title = NULL, y_title = NULL)
-    })
-
-    # ---- Spread Z-Score Dashboard ----
-    output$spread_zscore <- plotly::renderPlotly({
-      sz <- page_data()$spread_zscore
-
-      if (nrow(sz) == 0L) {
-        fig <- plotly::plot_ly() |>
-          plotly::add_annotations(text = "No spread data available", showarrow = FALSE)
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = NULL))
-      }
-
-      sz <- sz[order(abs(sz$zscore), decreasing = FALSE), , drop = FALSE]
-      bar_colors <- ifelse(sz$zscore >= 0, "#4da3a3", "#b35c60")
-
-      fig <- plotly::plot_ly(
-        data = sz,
-        x = ~zscore,
-        y = ~spread_label,
-        type = "bar",
-        orientation = "h",
-        marker = list(color = bar_colors),
-        hovertemplate = "%{y}<br>Z-score: %{x:.2f}<extra></extra>"
-      ) |>
-        plotly::layout(shapes = list(
-          list(type = "line", x0 = 0, x1 = 0, y0 = -0.5, y1 = nrow(sz) - 0.5,
-               line = list(color = "#7f8b99", width = 1, dash = "dot"))
-        ))
-
-      ea_plotly_layout(fig, x_title = "Z-Score", y_title = NULL)
-    })
-
-    # ---- Rolling Beta Dynamics ----
-    output$rolling_beta <- plotly::renderPlotly({
-      rbt <- page_data()$rolling_beta_ts
-      palette <- c("#4da3a3", "#5a85c8", "#7f8b99", "#d2a157", "#c46e73", "#8ecf8e")
-
-      fig <- plotly::plot_ly()
-
-      if (nrow(rbt) == 0L) {
-        fig <- fig |>
-          plotly::add_annotations(text = "Insufficient data for rolling beta", showarrow = FALSE)
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = NULL))
-      }
-
-      for (i in seq_along(unique(rbt$pair))) {
-        pair_name <- unique(rbt$pair)[[i]]
-        df <- rbt[rbt$pair == pair_name, , drop = FALSE]
-        col <- palette[[((i - 1L) %% length(palette)) + 1L]]
-        fig <- fig |>
-          plotly::add_lines(
-            data = df,
-            x = ~date,
-            y = ~beta,
-            name = pair_name,
-            line = list(color = col, width = 1.5),
-            hovertemplate = "%{x|%d %b %Y}<br>Beta: %{y:.3f}<extra>%{fullData.name}</extra>"
-          )
-      }
-
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Beta")
-    })
-
-    # ---- Cointegration Residual with OU Bands ----
-    output$coint_residual <- plotly::renderPlotly({
-      cr <- page_data()$coint_residual
-
-      if (is.null(cr) || nrow(cr) == 0L) {
-        fig <- plotly::plot_ly() |>
-          plotly::add_annotations(text = "Insufficient data for cointegration", showarrow = FALSE)
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = NULL))
-      }
-
-      # Use first pair available
-      first_pair <- cr$pair[1]
-      df_cr <- cr[cr$pair == first_pair, , drop = FALSE]
-
-      mu_val <- df_cr$ou_mu[1]
-
-      fig <- plotly::plot_ly() |>
-        plotly::add_ribbons(
-          data = df_cr, x = ~date,
-          ymin = ~band_2_lo,
-          ymax = ~band_2_hi,
-          name = "2-sigma band",
-          line = list(color = "transparent"),
-          fillcolor = "rgba(77,163,163,0.15)",
-          showlegend = TRUE,
-          hoverinfo = "skip"
-        ) |>
-        plotly::add_ribbons(
-          data = df_cr, x = ~date,
-          ymin = ~band_1_lo,
-          ymax = ~band_1_hi,
-          name = "1-sigma band",
-          line = list(color = "transparent"),
-          fillcolor = "rgba(77,163,163,0.30)",
-          showlegend = TRUE,
-          hoverinfo = "skip"
-        ) |>
-        plotly::add_lines(
-          data = df_cr, x = ~date,
-          y = ~residual,
-          name = paste0(first_pair, " residual"),
-          line = list(color = "#4da3a3", width = 1.5),
-          hovertemplate = "%{x|%d %b %Y}<br>Residual: %{y:.3f}<extra></extra>"
-        ) |>
-        plotly::layout(shapes = list(
-          list(type = "line",
-               x0 = min(df_cr$date), x1 = max(df_cr$date),
-               y0 = mu_val, y1 = mu_val,
-               line = list(color = "#d2a157", width = 1, dash = "dash"))
-        ))
-
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Residual")
-    })
   })
 }

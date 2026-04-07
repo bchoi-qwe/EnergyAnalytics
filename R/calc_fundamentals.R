@@ -1,301 +1,386 @@
 # ---- Fundamentals Calculation Layer ----
-# EIA inventory analytics from the canonical snapshot.
+# Inventory-focused EIA analytics from the canonical snapshot.
+
+ea_inventory_market_spec <- function() {
+  tibble::tribble(
+    ~market, ~product, ~location, ~display_label, ~product_order,
+    "CL", "crude", "Cushing", "CL • Crude • Cushing", 1L,
+    "NG", "ng", "Lower48", "NG • Natural Gas • Lower48", 2L,
+    "HO", "distillate", "US", "HO • Distillate • US", 3L,
+    "RB", "gasoline", "US", "RB • Gasoline • US", 4L
+  )
+}
+
+ea_inventory_market_map <- function() {
+  spec <- ea_inventory_market_spec()
+  stats::setNames(spec$product, spec$market)
+}
 
 ea_market_to_eia_product <- function(markets) {
-  mapping <- c(
-    CL = "crude", BRN = "crude",
-    HO = "distillate", RB = "gasoline", NG = "ng"
+  mapping <- ea_inventory_market_map()
+  unique(unname(mapping[markets[markets %in% names(mapping)]]))
+}
+
+ea_inventory_product_label <- function(product) {
+  labels <- c(
+    crude = "Crude",
+    distillate = "Distillate",
+    gasoline = "Gasoline",
+    ng = "Natural Gas"
   )
-  unique(mapping[markets[markets %in% names(mapping)]])
+
+  unname(labels[[product]] %||% tools::toTitleCase(product))
+}
+
+ea_inventory_preferred_location <- function(locations) {
+  if (length(locations) == 0L) {
+    return(NA_character_)
+  }
+
+  location_lower <- tolower(locations)
+  preferred_order <- c("total", "us", "lower48", "cushing")
+
+  for (candidate in preferred_order) {
+    idx <- match(candidate, location_lower, nomatch = 0L)
+    if (idx > 0L) {
+      return(locations[[idx]])
+    }
+  }
+
+  locations[[1]]
+}
+
+ea_inventory_display_window <- function(filters, available_dates = NULL) {
+  if (!is.null(filters$date_range) && length(filters$date_range) == 2L) {
+    return(range(as.Date(filters$date_range)))
+  }
+
+  valid_dates <- available_dates[!is.na(available_dates)]
+  if (length(valid_dates) == 0L) {
+    return(c(Sys.Date() - 365L, Sys.Date()))
+  }
+
+  max_date <- max(valid_dates)
+  c(max_date - 365L, max_date)
 }
 
 ea_calc_fundamentals <- function(filters) {
-  markets <- ea_coalesce(filters$commodities, c("CL", "BRN", "RB"))
-  products <- ea_market_to_eia_product(markets)
+  catalog <- ea_market_catalog()
+  inventory_spec <- ea_inventory_market_spec()
+  markets <- ea_coalesce(filters$commodities, catalog$market)
+  unsupported_markets <- setdiff(markets, inventory_spec$market)
+  inventory_markets <- inventory_spec %>%
+    dplyr::filter(.data$market %in% markets) %>%
+    dplyr::arrange(.data$product_order)
+  products <- unique(inventory_markets$product)
 
-  stocks <- ea_load_dataset("eia_stocks_long") |>
-    dplyr::filter(.data$product %in% products)
-
-  capacity <- tryCatch(
-    ea_load_dataset("eia_storage_capacity_long") |>
-      dplyr::filter(.data$product %in% products),
-    error = function(e) tibble::tibble()
+  empty_inventory <- tibble::tibble(
+    date = as.Date(character()),
+    product = character(),
+    location = character(),
+    current = numeric(),
+    avg_5yr = numeric(),
+    min_5yr = numeric(),
+    max_5yr = numeric(),
+    deviation = numeric(),
+    deviation_pct = numeric(),
+    unit = character(),
+    raw_unit = character(),
+    iso_year = integer(),
+    iso_week = integer(),
+    observations_5yr = integer()
   )
 
-  # --- stocks_timeseries ---
-  stocks_timeseries <- stocks |>
-    dplyr::select("date", "product", "location", "value", "unit")
+  empty_context <- list(
+    market = NA_character_,
+    market_label = NA_character_,
+    product = NA_character_,
+    location = NA_character_,
+    unit = NA_character_
+  )
 
-  # --- stocks_seasonal: current year vs 5-year range by week ---
-  latest_year <- as.integer(format(max(stocks$date, na.rm = TRUE), "%Y"))
-  five_year_start <- latest_year - 5L
+  empty_markets <- tibble::tibble(
+    market = character(),
+    product = character(),
+    location = character(),
+    unit = character(),
+    display_label = character(),
+    product_order = integer()
+  )
 
-  stocks_weekly <- stocks |>
-    dplyr::mutate(
-      year = as.integer(format(.data$date, "%Y")),
-      week_num = as.integer(format(.data$date, "%V"))
-    )
-
-  historical <- stocks_weekly |>
-    dplyr::filter(.data$year >= five_year_start, .data$year < latest_year) |>
-    dplyr::group_by(.data$product, .data$location, .data$week_num) |>
-    dplyr::summarise(
-      avg_5yr = mean(.data$value, na.rm = TRUE),
-      min_5yr = min(.data$value, na.rm = TRUE),
-      max_5yr = max(.data$value, na.rm = TRUE),
-      .groups = "drop"
-    )
-
-  current_year <- stocks_weekly |>
-    dplyr::filter(.data$year == latest_year) |>
-    dplyr::select("product", "location", "week_num", current = "value")
-
-  stocks_seasonal <- historical |>
-    dplyr::left_join(current_year, by = c("product", "location", "week_num")) |>
-    dplyr::rename(week = "week_num") |>
-    dplyr::arrange(.data$product, .data$week)
-
-  # --- stocks_deviation ---
-  stocks_with_dates <- stocks_weekly |>
-    dplyr::filter(.data$year == latest_year) |>
-    dplyr::select("date", "product", "location", "week_num")
-
-  stocks_deviation <- stocks_seasonal |>
-    dplyr::filter(!is.na(.data$current)) |>
-    dplyr::mutate(
-      deviation = .data$current - .data$avg_5yr,
-      deviation_pct = (.data$current - .data$avg_5yr) / .data$avg_5yr
-    ) |>
-    dplyr::left_join(stocks_with_dates, by = c("product", "location", "week" = "week_num")) |>
-    dplyr::select("date", "product", "deviation", "deviation_pct") |>
-    dplyr::filter(!is.na(.data$date))
-
-  # --- storage_capacity_util ---
-  storage_capacity_util <- if (nrow(capacity) > 0) {
-    latest_cap <- capacity |>
-      dplyr::filter(.data$date == max(.data$date, na.rm = TRUE)) |>
-      dplyr::select("product", "location", capacity = "value")
-
-    latest_stocks <- stocks |>
-      dplyr::group_by(.data$product, .data$location) |>
-      dplyr::filter(.data$date == max(.data$date, na.rm = TRUE)) |>
-      dplyr::ungroup() |>
-      dplyr::select("date", "product", "location", stocks = "value")
-
-    latest_stocks |>
-      dplyr::inner_join(latest_cap, by = c("product", "location")) |>
-      dplyr::mutate(utilization_pct = .data$stocks / .data$capacity) |>
-      dplyr::select("date", "product", "capacity", "stocks", "utilization_pct")
-  } else {
-    tibble::tibble(
-      date = as.Date(character()), product = character(),
-      capacity = numeric(), stocks = numeric(), utilization_pct = numeric()
-    )
-  }
-
-  # --- crack_spreads ---
-  crack_spreads <- tryCatch({
-    curves <- ea_load_dataset("commodity_curve_long") |>
-      dplyr::filter(.data$curve_point_num == 1L) |>
-      dplyr::select(.data$date, .data$market, .data$value)
-
-    crack_defs <- list(
-      "RB Crack (RB-CL)" = c("RB", "CL"),
-      "HO Crack (HO-CL)" = c("HO", "CL")
-    )
-
-    available_mkts <- unique(curves$market)
-
-    purrr::map_dfr(names(crack_defs), function(crack_name) {
-      legs <- crack_defs[[crack_name]]
-      if (!all(legs %in% available_mkts)) return(tibble::tibble())
-
-      wide <- curves |>
-        dplyr::filter(.data$market %in% legs) |>
-        dplyr::select(.data$date, .data$market, .data$value) |>
-        tidyr::pivot_wider(names_from = .data$market, values_from = .data$value) |>
-        dplyr::arrange(.data$date) |>
-        dplyr::filter(!is.na(.data[[legs[1]]]), !is.na(.data[[legs[2]]]))
-
-      if (nrow(wide) == 0) return(tibble::tibble())
-
-      wide |>
-        dplyr::mutate(
-          crack_value = .data[[legs[1]]] - .data[[legs[2]]],
-          spread_label = crack_name
-        ) |>
-        dplyr::select(.data$date, .data$spread_label, crack_value = .data$crack_value)
-    })
-  }, error = function(e) {
-    tibble::tibble(date = as.Date(character()), spread_label = character(), crack_value = numeric())
-  })
-
-  # --- treasury_snapshot ---
-  treasury_snapshot <- tryCatch({
-    ust <- ea_load_dataset("ust_curve_long")
-    all_dates <- sort(unique(ust$date), decreasing = TRUE)
-    if (length(all_dates) < 1) stop("no UST data")
-
-    target_dates <- c(
-      current = all_dates[1],
-      m1_ago = all_dates[pmin(22L, length(all_dates))],
-      m3_ago = all_dates[pmin(63L, length(all_dates))]
-    )
-
-    purrr::map_dfr(names(target_dates), function(label) {
-      d <- target_dates[[label]]
-      ust |>
-        dplyr::filter(.data$date == d) |>
-        dplyr::select(.data$curve_point_num, yield = .data$value) |>
-        dplyr::mutate(snapshot_label = label)
-    })
-  }, error = function(e) {
-    tibble::tibble(curve_point_num = numeric(), yield = numeric(), snapshot_label = character())
-  })
-
-  # --- commodity_rate_scatter ---
-  commodity_rate_scatter <- tryCatch({
-    ust <- ea_load_dataset("ust_curve_long")
-    curves_all <- ea_load_dataset("commodity_curve_long") |>
-      dplyr::filter(.data$curve_point_num == 1L, .data$market %in% markets) |>
-      dplyr::arrange(.data$market, .data$date) |>
-      dplyr::group_by(.data$market) |>
-      dplyr::mutate(commodity_chg = suppressWarnings(log(.data$value / dplyr::lag(.data$value)))) |>
-      dplyr::ungroup() |>
-      dplyr::filter(!is.na(.data$commodity_chg), is.finite(.data$commodity_chg))
-
-    ust_10y <- ust |>
-      dplyr::filter(.data$curve_point_num == 10) |>
-      dplyr::arrange(.data$date) |>
-      dplyr::mutate(rate_chg = .data$value - dplyr::lag(.data$value)) |>
-      dplyr::filter(!is.na(.data$rate_chg)) |>
-      dplyr::select(.data$date, rate_chg = .data$rate_chg)
-
-    curves_all |>
-      dplyr::inner_join(ust_10y, by = "date") |>
-      dplyr::select(.data$date, .data$market, .data$commodity_chg, .data$rate_chg)
-  }, error = function(e) {
-    tibble::tibble(date = as.Date(character()), market = character(),
-                   commodity_chg = numeric(), rate_chg = numeric())
-  })
-
-  # --- release_calendar ---
-  release_calendar <- {
-    today <- Sys.Date()
-    # EIA WPSR: every Wednesday; EIA Gas Storage: every Thursday
-    next_dates <- function(weekday_num, n = 8L) {
-      days_ahead <- (weekday_num - as.integer(format(today, "%u"))) %% 7L
-      if (days_ahead == 0L) days_ahead <- 7L
-      start <- today + days_ahead
-      seq(start, by = 7L, length.out = n)
-    }
-
-    wednesdays <- next_dates(3L)  # Wednesday = 3 in ISO
-    thursdays  <- next_dates(4L)  # Thursday = 4 in ISO
-
-    tibble::tibble(
-      release_date = c(wednesdays, thursdays),
-      event = c(
-        rep("EIA Weekly Petroleum Status Report (WPSR)", length(wednesdays)),
-        rep("EIA Natural Gas Storage Report", length(thursdays))
+  if (length(products) == 0L) {
+    return(list(
+      inventory_history = empty_inventory,
+      inventory_context = empty_context,
+      inventory_markets = empty_markets,
+      inventory_supported_markets = character(),
+      inventory_unsupported_markets = unsupported_markets,
+      stocks_timeseries = empty_inventory,
+      stocks_deviation = empty_inventory %>%
+        dplyr::select("date", "product", "location", "deviation", "deviation_pct"),
+      notes = c(
+        "Inventory data comes from the packaged EIA snapshot.",
+        "Only inventory-backed products are shown on this page."
       ),
-      day_of_week = c(
-        rep("Wednesday", length(wednesdays)),
-        rep("Thursday", length(thursdays))
+      assumptions = c(
+        "The selected date range controls the chart window.",
+        "The 5-year baseline compares each ISO week to the prior five completed ISO years."
       )
-    ) |>
-      dplyr::arrange(.data$release_date)
+    ))
   }
 
-  # --- kpis ---
-  # Latest weekly stocks change
-  latest_dev <- stocks_deviation |>
-    dplyr::arrange(dplyr::desc(.data$date)) |>
+  stocks <- ea_load_dataset("eia_stocks_long") %>%
+    dplyr::filter(.data$product %in% products) %>%
+    dplyr::arrange(.data$product, .data$location, .data$date)
+
+  display_window <- ea_inventory_display_window(filters, stocks$date)
+
+  stocks_weekly <- stocks %>%
+    dplyr::mutate(
+      iso_year = as.integer(format(.data$date, "%G")),
+      iso_week = as.integer(format(.data$date, "%V"))
+    )
+
+  reference_history <- stocks_weekly %>%
+    dplyr::select(
+      "product",
+      "location",
+      "iso_week",
+      hist_iso_year = "iso_year",
+      hist_value = "value"
+    )
+
+  stocks_with_reference <- stocks_weekly %>%
+    dplyr::left_join(
+      reference_history,
+      by = c("product", "location", "iso_week"),
+      relationship = "many-to-many"
+    ) %>%
+    dplyr::filter(
+      is.na(.data$hist_iso_year) |
+        (
+          .data$hist_iso_year >= (.data$iso_year - 5L) &
+            .data$hist_iso_year < .data$iso_year
+        )
+    ) %>%
+    dplyr::group_by(
+      .data$date,
+      .data$product,
+      .data$location,
+      .data$value,
+      .data$unit,
+      .data$raw_unit,
+      .data$iso_year,
+      .data$iso_week
+    ) %>%
+    dplyr::summarise(
+      avg_5yr = if (all(is.na(.data$hist_value))) NA_real_ else mean(.data$hist_value, na.rm = TRUE),
+      min_5yr = if (all(is.na(.data$hist_value))) NA_real_ else min(.data$hist_value, na.rm = TRUE),
+      max_5yr = if (all(is.na(.data$hist_value))) NA_real_ else max(.data$hist_value, na.rm = TRUE),
+      observations_5yr = sum(!is.na(.data$hist_value)),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      current = .data$value,
+      deviation = .data$current - .data$avg_5yr,
+      deviation_pct = dplyr::if_else(
+        !is.na(.data$avg_5yr) & .data$avg_5yr != 0,
+        .data$deviation / .data$avg_5yr,
+        NA_real_
+      )
+    ) %>%
+    dplyr::arrange(.data$product, .data$location, .data$date)
+
+  latest_inventory_levels <- stocks_with_reference %>%
+    dplyr::group_by(.data$product, .data$location) %>%
+    dplyr::filter(.data$date == max(.data$date, na.rm = TRUE)) %>%
+    dplyr::ungroup() %>%
+    dplyr::transmute(
+      product = .data$product,
+      inventory_location = .data$location,
+      inventory_date = .data$date,
+      current = .data$current,
+      inventory_unit = .data$unit
+    )
+
+  storage_capacity <- ea_load_dataset("eia_storage_capacity_long") %>%
+    dplyr::filter(.data$product %in% products) %>%
+    dplyr::group_by(.data$product, .data$location) %>%
+    dplyr::filter(.data$date == max(.data$date, na.rm = TRUE)) %>%
+    dplyr::ungroup()
+
+  inventory_markets <- inventory_markets %>%
+    dplyr::inner_join(
+      stocks_with_reference %>%
+        dplyr::distinct(.data$product, .data$location, .data$unit),
+      by = c("product", "location")
+    ) %>%
+    dplyr::arrange(.data$product_order)
+
+  inventory_history <- stocks_with_reference %>%
+    dplyr::inner_join(
+      inventory_markets %>%
+        dplyr::select("market", "product", "location", "display_label", "product_order"),
+      by = c("product", "location")
+    ) %>%
+    dplyr::filter(
+      .data$date >= display_window[1],
+      .data$date <= display_window[2]
+    ) %>%
+    dplyr::arrange(.data$product_order, .data$date)
+
+  primary_product_row <- inventory_markets %>%
+    dplyr::arrange(.data$product_order) %>%
     dplyr::slice(1L)
 
-  # Latest crack spread
-  latest_crack <- if (nrow(crack_spreads) > 0) {
-    crack_spreads |>
-      dplyr::arrange(dplyr::desc(.data$date)) |>
-      dplyr::group_by(.data$spread_label) |>
-      dplyr::slice(1L) |>
-      dplyr::ungroup() |>
-      dplyr::slice(1L)
+  inventory_context <- if (nrow(primary_product_row) > 0L) {
+    list(
+      market = primary_product_row$market[[1]],
+      market_label = ea_market_labels(primary_product_row$market[[1]], catalog)[1],
+      product = primary_product_row$product[[1]],
+      location = primary_product_row$location[[1]],
+      unit = primary_product_row$unit[[1]]
+    )
   } else {
-    NULL
+    empty_context
   }
 
-  # Utilization
-  top_util <- storage_capacity_util |>
-    dplyr::slice_max(.data$utilization_pct, n = 1L, with_ties = FALSE)
+  stocks_timeseries <- inventory_history
 
-  kpis <- tibble::tribble(
-    ~title, ~value, ~delta, ~status,
+  stocks_seasonal <- inventory_history %>%
+    dplyr::transmute(
+      date = .data$date,
+      week = .data$iso_week,
+      market = .data$market,
+      product = .data$product,
+      location = .data$location,
+      current = .data$current,
+      avg_5yr = .data$avg_5yr,
+      min_5yr = .data$min_5yr,
+      max_5yr = .data$max_5yr
+    )
 
-    "Inventory Deviation",
-    if (nrow(latest_dev) > 0 && !is.na(latest_dev$deviation[1])) {
-      scales::comma(latest_dev$deviation[1], accuracy = 1)
-    } else { "N/A" },
-    if (nrow(latest_dev) > 0 && !is.na(latest_dev$deviation_pct[1])) {
-      scales::percent(latest_dev$deviation_pct[1], accuracy = 0.1)
-    } else { "vs 5yr avg" },
-    if (nrow(latest_dev) > 0 && !is.na(latest_dev$deviation_pct[1])) {
-      if (abs(latest_dev$deviation_pct[1]) > 0.10) "warning" else "neutral"
-    } else { "neutral" },
+  stocks_deviation <- stocks_timeseries %>%
+    dplyr::select("date", "product", "location", "deviation", "deviation_pct")
 
-    "Best Crack Spread",
-    if (!is.null(latest_crack) && nrow(latest_crack) > 0) {
-      scales::number(latest_crack$crack_value[1], accuracy = 0.01)
-    } else { "N/A" },
-    if (!is.null(latest_crack) && nrow(latest_crack) > 0) {
-      latest_crack$spread_label[1]
-    } else { "" },
-    "positive",
+  storage_capacity_util <- purrr::pmap_dfr(
+    inventory_markets,
+    function(market, product, location, display_label, product_order, unit) {
+      product_capacity <- storage_capacity %>%
+        dplyr::filter(.data$product == product)
 
-    "Storage Utilization",
-    if (nrow(top_util) > 0 && !is.na(top_util$utilization_pct[1])) {
-      scales::percent(top_util$utilization_pct[1], accuracy = 1)
-    } else { "N/A" },
-    if (nrow(top_util) > 0) top_util$product[1] else "",
-    if (nrow(top_util) > 0 && !is.na(top_util$utilization_pct[1]) && top_util$utilization_pct[1] > 0.85) "warning" else "neutral",
+      capacity_location <- if (nrow(product_capacity) == 0L) {
+        NA_character_
+      } else if (location %in% product_capacity$location) {
+        location
+      } else {
+        ea_inventory_preferred_location(product_capacity$location)
+      }
 
-    "Next Release",
-    if (nrow(release_calendar) > 0) {
-      format(release_calendar$release_date[1], "%d %b")
-    } else { "N/A" },
-    if (nrow(release_calendar) > 0) release_calendar$event[1] else "",
-    "neutral",
+      tibble::tibble(
+        market = market,
+        product = product,
+        location = location,
+        capacity_location = capacity_location
+      )
+    }
+  ) %>%
+    dplyr::left_join(
+      latest_inventory_levels,
+      by = c("product", "location" = "inventory_location")
+    ) %>%
+    dplyr::left_join(
+      storage_capacity %>%
+        dplyr::transmute(
+          .data$product,
+          capacity_location = .data$location,
+          capacity_date = .data$date,
+          capacity = .data$value,
+          capacity_unit = .data$unit
+        ),
+      by = c("product", "capacity_location")
+  ) %>%
+    dplyr::mutate(
+      utilization_pct = dplyr::if_else(
+        !is.na(.data$current) & !is.na(.data$capacity) & .data$capacity != 0,
+        .data$current / .data$capacity,
+        NA_real_
+      )
+    ) %>%
+    dplyr::transmute(
+      market = .data$market,
+      product = .data$product,
+      inventory_location = .data$location,
+      capacity_location = .data$capacity_location,
+      current = .data$current,
+      capacity = .data$capacity,
+      utilization_pct = .data$utilization_pct,
+      inventory_date = .data$inventory_date,
+      capacity_date = .data$capacity_date,
+      inventory_unit = .data$inventory_unit,
+      capacity_unit = .data$capacity_unit
+    )
 
-    "UST 10Y",
-    if (nrow(treasury_snapshot) > 0) {
-      curr <- treasury_snapshot |> dplyr::filter(.data$snapshot_label == "current", .data$curve_point_num == 10)
-      if (nrow(curr) > 0) scales::number(curr$yield[1], accuracy = 0.01) else "N/A"
-    } else { "N/A" },
-    "current yield",
-    "neutral"
-  )
+  latest_focus <- stocks_timeseries %>%
+    dplyr::filter(.data$market == inventory_context$market) %>%
+    dplyr::arrange(.data$date) %>%
+    dplyr::slice_tail(n = 1L)
 
-  # --- notes and assumptions ---
+  focus_util <- storage_capacity_util %>%
+    dplyr::filter(.data$market == inventory_context$market) %>%
+    dplyr::slice_head(n = 1L)
+
+  kpis <- if (nrow(latest_focus) == 0L) {
+    tibble::tibble(
+      title = character(),
+      value = character(),
+      delta = character(),
+      status = character()
+    )
+  } else {
+    tibble::tribble(
+      ~title, ~value, ~delta, ~status,
+      "Inventory",
+      scales::comma(latest_focus$current[[1]]),
+      latest_focus$location[[1]],
+      "neutral",
+      "Gap vs 5Y",
+      if (is.finite(latest_focus$deviation[[1]])) scales::comma(latest_focus$deviation[[1]]) else "N/A",
+      latest_focus$product[[1]],
+      "neutral",
+      "Gap Percent",
+      if (is.finite(latest_focus$deviation_pct[[1]])) scales::percent(latest_focus$deviation_pct[[1]], accuracy = 0.1) else "N/A",
+      "vs seasonal baseline",
+      "neutral",
+      "Utilization",
+      if (nrow(focus_util) > 0L && is.finite(focus_util$utilization_pct[[1]])) scales::percent(focus_util$utilization_pct[[1]], accuracy = 0.1) else "N/A",
+      if (nrow(focus_util) > 0L && !is.na(focus_util$capacity_location[[1]])) focus_util$capacity_location[[1]] else "capacity unavailable",
+      "neutral"
+    )
+  }
+
   notes <- c(
-    "EIA inventory data sourced from the canonical snapshot via RTL::eia2tidy_all.",
-    "Crack spreads computed from front contract prices (RB-CL, HO-CL).",
-    "Treasury snapshot shows current, 1-month, and 3-month ago yield curves."
+    "Inventory charts use the packaged EIA weekly inventory snapshot.",
+    "Storage capacity utilization uses the packaged EIA capacity snapshot when a compatible product/location series is available.",
+    "The chart window follows the shared date filter."
   )
+
   assumptions <- c(
-    "Inventory 5-year range uses the 5 complete calendar years preceding the most recent year.",
-    "WPSR and gas storage release dates are deterministic (Wednesday/Thursday schedule).",
-    "Commodity-rate scatter uses 10Y UST as the interest rate proxy."
+    "The 5-year baseline compares each observation's ISO week with the prior five completed ISO years.",
+    "If fewer than five historical observations exist for a week, the baseline uses the available history only.",
+    "Capacity fallback uses the closest available product-level location when an exact inventory location is not published."
   )
 
   list(
+    inventory_history = inventory_history,
+    inventory_context = inventory_context,
+    inventory_markets = inventory_markets,
+    inventory_supported_markets = inventory_markets$market,
+    inventory_unsupported_markets = unsupported_markets,
     stocks_timeseries = stocks_timeseries,
     stocks_seasonal = stocks_seasonal,
     stocks_deviation = stocks_deviation,
     storage_capacity_util = storage_capacity_util,
-    crack_spreads = crack_spreads,
-    treasury_snapshot = treasury_snapshot,
-    commodity_rate_scatter = commodity_rate_scatter,
-    release_calendar = release_calendar,
     kpis = kpis,
     notes = notes,
     assumptions = assumptions

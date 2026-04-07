@@ -2,12 +2,11 @@ mod_detail_table_ui <- function(id) {
   shiny::uiOutput(shiny::NS(id, "table_card"))
 }
 
-mod_detail_table_server <- function(id, data, title = "Detail table", subtitle = NULL) {
+mod_detail_table_server <- function(id, data, title = "Detail table") {
   shiny::moduleServer(id, function(input, output, session) {
     output$table_card <- shiny::renderUI({
       ea_table_card(
         title = title,
-        subtitle = subtitle,
         output_id = session$ns("detail_table"),
         class = "ea-card--table"
       )

@@ -4,493 +4,537 @@ mod_volatility_ui <- function(id) {
 
 mod_volatility_server <- function(id, filters, data_timestamp) {
   shiny::moduleServer(id, function(input, output, session) {
-    page_data <- shiny::reactive(ea_calc_volatility(filters()))
-
-    mod_kpi_strip_server("kpi_strip", kpis = shiny::reactive(page_data()$kpis))
-    mod_footer_notes_server(
-      "footer_notes",
-      notes = shiny::reactive(list(
-        notes = page_data()$notes,
-        assumptions = page_data()$assumptions,
-        timestamp = data_timestamp()
-      )),
-      title = "Vol surface notes"
+    view_choices <- c(
+      "History" = "history",
+      "Cone" = "cone",
+      "Term" = "term"
     )
+    history_basis_choices <- c(
+      "Trailing" = "trailing",
+      "Full" = "full"
+    )
+    history_year_choices <- ea_history_year_choices()
+
+    selected_context_basis <- shiny::reactive({
+      current <- ea_coalesce(input$vol_context_basis, "trailing")
+      if (current %in% unname(history_basis_choices)) current else "trailing"
+    })
+
+    selected_context_years <- shiny::reactive({
+      current <- suppressWarnings(as.integer(ea_coalesce(input$vol_context_years, "5")[[1]]))
+      if (!is.finite(current) || is.na(current) || current < 1L) {
+        5L
+      } else {
+        min(current, 30L)
+      }
+    })
+
+    selected_context <- shiny::reactive({
+      if (identical(selected_context_basis(), "full")) {
+        "full"
+      } else {
+        paste0(selected_context_years(), "y")
+      }
+    })
+
+    page_data <- shiny::reactive(
+      ea_calc_volatility(filters(), history_context = selected_context())
+    )
+
+    available_markets <- shiny::reactive({
+      mkts <- page_data()$available_markets
+      mkts <- mkts[nzchar(mkts)]
+      if (length(mkts) == 0L) {
+        mkts <- ea_coalesce(filters()$commodities, character(0))
+      }
+      unique(mkts)
+    })
+
+    selected_market <- shiny::reactive({
+      current_selection <- ea_coalesce(input$vol_market, character(0))
+      market_choices <- available_markets()
+
+      if (length(current_selection) == 1L && current_selection %in% market_choices) {
+        current_selection
+      } else if (length(market_choices) > 0L) {
+        market_choices[[1]]
+      } else {
+        character(0)
+      }
+    })
+
+    selected_view <- shiny::reactive({
+      current <- ea_coalesce(input$vol_view, "history")
+      if (current %in% unname(view_choices)) current else "history"
+    })
+
+    selected_history_series <- shiny::reactive({
+      current_market <- selected_market()
+      rv_ts <- page_data()$realized_vol_timeseries
+      iv_ts <- page_data()$realized_vs_implied
+
+      if (length(current_market) != 1L) {
+        return(list(rv20 = rv_ts[0, ], rv60 = rv_ts[0, ], iv = iv_ts[0, ]))
+      }
+
+      list(
+        rv20 = rv_ts %>% dplyr::filter(.data$market == current_market, .data$window == "20d"),
+        rv60 = rv_ts %>% dplyr::filter(.data$market == current_market, .data$window == "60d"),
+        iv = iv_ts %>% dplyr::filter(.data$market == current_market, is.finite(.data$atm_iv))
+      )
+    })
+
+    selected_history_context <- shiny::reactive({
+      current_market <- selected_market()
+      page_data()$vol_history_context %>%
+        dplyr::filter(.data$market == current_market)
+    })
+
+    selected_cone <- shiny::reactive({
+      current_market <- selected_market()
+      page_data()$vol_cone %>%
+        dplyr::filter(.data$market == current_market) %>%
+        dplyr::arrange(.data$horizon)
+    })
+
+    selected_term <- shiny::reactive({
+      current_market <- selected_market()
+      page_data()$vol_term_structure %>%
+        dplyr::filter(.data$market == current_market) %>%
+        dplyr::arrange(.data$tenor)
+    })
+
+    selected_atm_term <- shiny::reactive({
+      current_market <- selected_market()
+      surface <- page_data()$vol_surface_grid %>%
+        dplyr::filter(.data$market == current_market)
+
+      if (nrow(surface) == 0L) {
+        return(tibble::tibble(tenor = numeric(), atm_iv = numeric()))
+      }
+
+      surface %>%
+        dplyr::group_by(.data$curve_point_num) %>%
+        dplyr::slice_min(abs(.data$moneyness - 1), n = 1L, with_ties = FALSE) %>%
+        dplyr::ungroup() %>%
+        dplyr::transmute(tenor = .data$curve_point_num, atm_iv = .data$iv) %>%
+        dplyr::arrange(.data$tenor)
+    })
+
+    selected_history_table <- shiny::reactive({
+      current_market <- selected_market()
+      history_context <- selected_history_context()
+      regime <- page_data()$vol_regime %>% dplyr::filter(.data$market == current_market)
+      iv_rv <- page_data()$realized_vs_implied %>%
+        dplyr::filter(.data$market == current_market) %>%
+        dplyr::arrange(.data$date)
+      vov <- page_data()$vol_of_vol_context %>% dplyr::filter(.data$market == current_market)
+
+      rv20 <- history_context %>% dplyr::filter(.data$window == "20d")
+      rv60 <- history_context %>% dplyr::filter(.data$window == "60d")
+      latest_iv <- if (nrow(iv_rv) > 0L) utils::tail(iv_rv$atm_iv[is.finite(iv_rv$atm_iv)], 1L) else NA_real_
+      latest_spread <- if (nrow(iv_rv) > 0L) utils::tail(iv_rv$iv_rv_spread[is.finite(iv_rv$iv_rv_spread)], 1L) else NA_real_
+
+      tibble::tribble(
+        ~metric, ~context, ~value,
+        "20d RV", page_data()$history_context_label, if (nrow(rv20) > 0L) scales::percent(rv20$current_vol[[1]], accuracy = 0.1) else "N/A",
+        "20d Pct", page_data()$history_context_label, if (nrow(rv20) > 0L) scales::percent(rv20$percentile[[1]], accuracy = 1) else "N/A",
+        "20d Z", page_data()$history_context_label, if (nrow(rv20) > 0L && is.finite(rv20$zscore[[1]])) scales::number(rv20$zscore[[1]], accuracy = 0.01) else "N/A",
+        "60d RV", "annualized", if (nrow(rv60) > 0L) scales::percent(rv60$current_vol[[1]], accuracy = 0.1) else "N/A",
+        "ATM IV", "front listed", if (length(latest_iv) > 0L && is.finite(latest_iv[[1]])) scales::percent(latest_iv[[1]], accuracy = 0.1) else "N/A",
+        "IV-RV", "ATM - 60d", if (length(latest_spread) > 0L && is.finite(latest_spread[[1]])) paste0(ifelse(latest_spread[[1]] >= 0, "+", ""), scales::percent(latest_spread[[1]], accuracy = 0.1)) else "N/A",
+        "VoV", page_data()$history_context_label, if (nrow(vov) > 0L && is.finite(vov$current_vov[[1]])) scales::percent(vov$current_vov[[1]], accuracy = 0.1) else "N/A",
+        "Regime", "", if (nrow(regime) > 0L) regime$regime[[1]] else "N/A"
+      )
+    })
+
+    selected_view_spec <- shiny::reactive({
+      switch(
+        selected_view(),
+        history = list(
+          plot_title = "Vol History",
+          plot_output = session$ns("vol_history_chart"),
+          table_title = "Vol Summary",
+          table_output = session$ns("vol_history_table"),
+          plot_height = "320px"
+        ),
+        cone = list(
+          plot_title = "Vol Cone",
+          plot_output = session$ns("vol_cone"),
+          table_title = "Cone Table",
+          table_output = session$ns("vol_cone_table"),
+          plot_height = "320px"
+        ),
+        term = list(
+          plot_title = "Vol Term",
+          plot_output = session$ns("vol_term_chart"),
+          table_title = "Term Table",
+          table_output = session$ns("vol_term_table"),
+          plot_height = "320px"
+        )
+      )
+    })
 
     output$page <- shiny::renderUI({
       ns <- session$ns
       current_filters <- filters()
+      selected_choice <- selected_market()
+      selected_view_choice <- selected_view()
+      selected_context_basis_choice <- selected_context_basis()
+      selected_context_years_choice <- as.character(selected_context_years())
+      years_visible_condition <- sprintf("input['%s'] !== 'full'", ns("vol_context_basis"))
 
       if (length(current_filters$commodities) == 0L) {
         return(htmltools::tagList(
-          ea_selected_filters_ribbon(current_filters, data_timestamp()),
           ea_empty_state_card(
-            title = "Select products to populate vol views",
-            body = "Vol Surface tracks realized vol cone, regime classification, ATM vol history, and implied vs realized spread across the selected products.",
-            hint = "All vol views key off the same product selection and lookback."
-          ),
-          mod_footer_notes_ui(ns("footer_notes"))
+            title = "Select products",
+            body = "Add products."
+          )
         ))
       }
 
       htmltools::tagList(
-        ea_selected_filters_ribbon(current_filters, data_timestamp()),
-        mod_kpi_strip_ui(ns("kpi_strip")),
-        # Row 1: Vol Cone (8) | Vol Regime Table (4)
-        bslib::layout_columns(
-          col_widths = c(8, 4),
-          ea_plotly_card(
-            title = "Vol Cone",
-            subtitle = "Realized vol percentile fan by horizon.",
-            output_id = ns("vol_cone"),
-            height = "260px"
-          ),
-          ea_table_card(
-            title = "Vol Regime Summary",
-            subtitle = "Current regime classification per commodity.",
-            output_id = ns("vol_regime_table")
+        htmltools::tags$div(
+          class = "ea-toolbar",
+          htmltools::tags$div(
+            class = "ea-toolbar__row",
+            htmltools::tags$div(
+              class = "ea-toolbar__field ea-toolbar__field--sm",
+              ea_toolbar_select(
+                input_id = ns("vol_market"),
+                label = "Market",
+                choices = stats::setNames(available_markets(), ea_market_labels(available_markets())),
+                selected = selected_choice
+              )
+            ),
+            htmltools::tags$div(
+              class = "ea-toolbar__field ea-toolbar__field--sm",
+              ea_toolbar_select(
+                input_id = ns("vol_view"),
+                label = "View",
+                choices = view_choices,
+                selected = selected_view_choice
+              )
+            ),
+            htmltools::tags$div(
+              class = "ea-toolbar__field ea-toolbar__field--sm",
+              ea_toolbar_select(
+                input_id = ns("vol_context_basis"),
+                label = "Basis",
+                choices = history_basis_choices,
+                selected = selected_context_basis_choice
+              )
+            ),
+            shiny::conditionalPanel(
+              condition = years_visible_condition,
+              htmltools::tags$div(
+                class = "ea-toolbar__field ea-toolbar__field--sm",
+                ea_toolbar_select(
+                  input_id = ns("vol_context_years"),
+                  label = "Years",
+                  choices = history_year_choices,
+                  selected = selected_context_years_choice
+                )
+              )
+            )
           )
         ),
-        # Row 2: ATM Vol History (6) | Vol-of-Vol Monitor (6)
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          ea_plotly_card(
-            title = "ATM Vol History",
-            subtitle = "20d RV, 60d RV, GARCH, and ATM implied for primary market.",
-            output_id = ns("atm_vol_history"),
-            height = "250px"
-          ),
-          ea_plotly_card(
-            title = "Vol-of-Vol Monitor",
-            subtitle = "Rolling 60-day SD of 20d realized vol.",
-            output_id = ns("vol_of_vol_chart"),
-            height = "250px"
-          )
-        ),
-        # Row 3: Realized Vol Surface heatmap (8) | Implied Vol Term Structure (4)
-        bslib::layout_columns(
-          col_widths = c(8, 4),
-          ea_plotly_card(
-            title = "Realized Vol Surface",
-            subtitle = "Realized vol by market and tenor.",
-            output_id = ns("rv_surface"),
-            height = "260px"
-          ),
-          ea_plotly_card(
-            title = "Implied Vol Term Structure",
-            subtitle = "ATM implied vol by tenor per commodity.",
-            output_id = ns("iv_term"),
-            height = "260px"
-          )
-        ),
-        # Row 4: Skew Chart (6) | Cross-Asset Vol Box (6)
-        bslib::layout_columns(
-          col_widths = c(6, 6),
-          ea_plotly_card(
-            title = "Skew / Smile",
-            subtitle = "Front-month implied vol smile per commodity.",
-            output_id = ns("vol_skew"),
-            height = "250px"
-          ),
-          ea_plotly_card(
-            title = "Cross-Asset Vol Comparison",
-            subtitle = "Vol distribution box plot with current level marker.",
-            output_id = ns("cross_asset_vol"),
-            height = "250px"
-          )
-        ),
-        # Row 5: IV vs RV Spread History (12)
-        bslib::layout_columns(
-          col_widths = c(12),
-          ea_plotly_card(
-            title = "IV vs RV Spread History",
-            subtitle = "ATM implied vs 60d realized. Teal = options rich (IV > RV); red = options cheap (IV < RV).",
-            output_id = ns("iv_rv_spread_chart"),
-            height = "240px"
-          )
-        ),
-        mod_footer_notes_ui(ns("footer_notes"))
+        shiny::uiOutput(ns("view_panel"))
       )
     })
 
-    # --- Row 1 Left: Vol Cone ---
-    output$vol_cone <- plotly::renderPlotly({
-      vc <- page_data()$vol_cone
-      palette <- ea_market_palette()
+    output$view_panel <- shiny::renderUI({
+      view_spec <- selected_view_spec()
+      ea_module_view_panel(
+        plot_title = view_spec$plot_title,
+        plot_output_id = view_spec$plot_output,
+        table_title = view_spec$table_title,
+        table_output_id = view_spec$table_output,
+        plot_height = view_spec$plot_height
+      )
+    })
+
+    output$vol_history_chart <- plotly::renderPlotly({
+      series <- selected_history_series()
+      context_rows <- selected_history_context()
+      rv20 <- series$rv20
+      rv60 <- series$rv60
+      iv_ts <- series$iv
       fig <- plotly::plot_ly()
 
-      if (nrow(vc) == 0) {
-        return(ea_plotly_layout(fig, x_title = "Horizon (Days)", y_title = "Annualized Vol"))
+      if (nrow(rv20) == 0L && nrow(rv60) == 0L && nrow(iv_ts) == 0L) {
+        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Annualized Vol"))
       }
 
-      for (mkt in unique(vc$market)) {
-        df <- vc[vc$market == mkt, , drop = FALSE]
-        col <- if (!is.null(palette[[mkt]])) unname(palette[[mkt]]) else "#4da3a3"
+      band_source <- if (nrow(rv20) > 0L) rv20 else rv60
+      rv20_context <- context_rows %>% dplyr::filter(.data$window == "20d")
 
-        # p10-p90 outer band
-        fig <- fig |>
+      if (nrow(band_source) > 0L && nrow(rv20_context) > 0L) {
+        band_df <- tibble::tibble(
+          date = band_source$date,
+          p10 = rv20_context$p10[[1]],
+          p25 = rv20_context$p25[[1]],
+          p75 = rv20_context$p75[[1]],
+          p90 = rv20_context$p90[[1]],
+          p50 = rv20_context$p50[[1]]
+        )
+
+        fig <- fig %>%
           plotly::add_ribbons(
-            data = df,
-            x = ~horizon,
+            data = band_df,
+            x = ~date,
             ymin = ~p10,
             ymax = ~p90,
-            name = paste(mkt, "p10-p90"),
-            fillcolor = paste0(col, "22"),
+            fillcolor = "rgba(77,163,163,0.10)",
             line = list(color = "transparent"),
             showlegend = FALSE,
             hoverinfo = "skip"
-          ) |>
-          # p25-p75 inner band
+          ) %>%
           plotly::add_ribbons(
-            data = df,
-            x = ~horizon,
+            data = band_df,
+            x = ~date,
             ymin = ~p25,
             ymax = ~p75,
-            name = paste(mkt, "p25-p75"),
-            fillcolor = paste0(col, "55"),
+            fillcolor = "rgba(77,163,163,0.18)",
             line = list(color = "transparent"),
             showlegend = FALSE,
             hoverinfo = "skip"
-          ) |>
-          # p50 median line
+          ) %>%
           plotly::add_lines(
-            data = df,
-            x = ~horizon,
+            data = band_df,
+            x = ~date,
             y = ~p50,
-            name = paste(mkt, "median"),
-            line = list(color = col, width = 1.5, dash = "dot"),
-            showlegend = FALSE,
+            name = paste0("20d median · ", page_data()$history_context_label),
+            line = list(color = "#7f8b99", width = 1.2, dash = "dot"),
             hoverinfo = "skip"
-          ) |>
-          # Current vol marker
-          plotly::add_markers(
-            data = df,
-            x = ~horizon,
-            y = ~current_vol,
-            name = mkt,
-            marker = list(color = col, size = 8, symbol = "circle"),
-            hovertemplate = paste0(mkt, " %{x}d<br>Current: %{y:.1%}<extra></extra>")
           )
       }
 
-      ea_plotly_layout(fig, x_title = "Horizon (Days)", y_title = "Annualized Vol")
-    })
-
-    # --- Row 1 Right: Vol Regime Table ---
-    output$vol_regime_table <- reactable::renderReactable({
-      cav <- page_data()$cross_asset_vol
-      vr <- page_data()$vol_regime
-
-      tbl <- if (nrow(cav) > 0 && nrow(vr) > 0) {
-        dplyr::left_join(vr, cav[, c("market", "current_vol")], by = "market")
-      } else if (nrow(vr) > 0) {
-        vr
-      } else {
-        tibble::tibble(market = character(), regime = character(), vol_percentile = numeric(), current_vol = numeric())
-      }
-
-      reactable::reactable(
-        tbl,
-        theme = ea_reactable_theme(),
-        columns = list(
-          market = reactable::colDef(name = "Market", minWidth = 70),
-          regime = reactable::colDef(name = "Regime", minWidth = 140),
-          vol_percentile = reactable::colDef(
-            name = "Pctile",
-            format = reactable::colFormat(percent = TRUE, digits = 0),
-            minWidth = 70
-          ),
-          current_vol = reactable::colDef(
-            name = "Current Vol",
-            format = reactable::colFormat(percent = TRUE, digits = 1),
-            minWidth = 90
-          )
-        ),
-        compact = TRUE,
-        highlight = TRUE
-      )
-    })
-
-    # --- Row 2 Left: ATM Vol History ---
-    output$atm_vol_history <- plotly::renderPlotly({
-      rv_ts <- page_data()$realized_vol_timeseries
-      garch <- page_data()$garch_vol
-      atm_iv_val <- page_data()$vol_surface_grid
-      primary_markets <- unique(rv_ts$market)
-      primary <- if (length(primary_markets) > 0) primary_markets[1] else character(0)
-
-      if (length(primary) == 0) {
-        return(ea_plotly_layout(plotly::plot_ly(), x_title = NULL, y_title = "Annualized Vol"))
-      }
-
-      front_tenor <- if (nrow(atm_iv_val) > 0) min(atm_iv_val$curve_point_num, na.rm = TRUE) else 1L
-      atm_iv_val_scalar <- atm_iv_val |>
-        dplyr::filter(
-          .data$market == primary,
-          abs(.data$moneyness - 1.0) < 0.01,
-          .data$curve_point_num == front_tenor
-        ) |>
-        dplyr::summarise(atm_iv = mean(.data$iv, na.rm = TRUE)) |>
-        dplyr::pull(.data$atm_iv)
-      if (length(atm_iv_val_scalar) == 0) atm_iv_val_scalar <- NA_real_
-
-      rv20 <- rv_ts |> dplyr::filter(.data$market == primary, .data$window == "20d")
-      rv60 <- rv_ts |> dplyr::filter(.data$market == primary, .data$window == "60d")
-      garch_primary <- garch
-
-      fig <- plotly::plot_ly()
-
-      if (nrow(rv20) > 0) {
-        fig <- fig |>
+      if (nrow(rv20) > 0L) {
+        fig <- fig %>%
           plotly::add_lines(
             data = rv20,
             x = ~date,
             y = ~realized_vol,
             name = "20d RV",
-            line = list(color = "#4da3a3", width = 1.5),
+            line = list(color = "#4da3a3", width = 2.3),
             hovertemplate = "%{x|%d %b %Y}<br>20d RV: %{y:.1%}<extra></extra>"
           )
       }
 
-      if (nrow(rv60) > 0) {
-        fig <- fig |>
+      if (nrow(rv60) > 0L) {
+        fig <- fig %>%
           plotly::add_lines(
             data = rv60,
             x = ~date,
             y = ~realized_vol,
             name = "60d RV",
-            line = list(color = "#4da3a3", width = 1.5, dash = "dash"),
+            line = list(color = "#5a85c8", width = 1.8, dash = "dash"),
             hovertemplate = "%{x|%d %b %Y}<br>60d RV: %{y:.1%}<extra></extra>"
           )
       }
 
-      if (nrow(garch_primary) > 0) {
-        fig <- fig |>
+      if (nrow(iv_ts) > 0L) {
+        fig <- fig %>%
           plotly::add_lines(
-            data = garch_primary,
+            data = iv_ts,
             x = ~date,
-            y = ~garch_vol,
-            name = "GARCH",
-            line = list(color = "#5a85c8", width = 1.5),
-            hovertemplate = "%{x|%d %b %Y}<br>GARCH: %{y:.1%}<extra></extra>"
-          )
-      }
-
-      if (!is.na(atm_iv_val_scalar) && nrow(rv60) > 0) {
-        date_range <- range(rv60$date, na.rm = TRUE)
-        fig <- fig |>
-          plotly::add_lines(
-            x = c(date_range[1], date_range[2]),
-            y = c(atm_iv_val_scalar, atm_iv_val_scalar),
+            y = ~atm_iv,
             name = "ATM IV",
-            line = list(color = "#d2a157", width = 1.5, dash = "dot"),
-            hovertemplate = "ATM IV: %{y:.1%}<extra></extra>"
+            line = list(color = "#d2a157", width = 1.8, dash = "dot"),
+            hovertemplate = "%{x|%d %b %Y}<br>ATM IV: %{y:.1%}<extra></extra>"
           )
       }
 
       ea_plotly_layout(fig, x_title = NULL, y_title = "Annualized Vol")
     })
 
-    # --- Row 2 Right: Vol-of-Vol ---
-    output$vol_of_vol_chart <- plotly::renderPlotly({
-      vov <- page_data()$vol_of_vol
-      palette <- ea_market_palette()
-      fig <- plotly::plot_ly()
+    output$vol_history_table <- reactable::renderReactable({
+      display <- selected_history_table()
 
-      if (nrow(vov) == 0) {
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Vol of Vol"))
-      }
-
-      for (mkt in unique(vov$market)) {
-        df <- vov[vov$market == mkt, , drop = FALSE]
-        col <- if (!is.null(palette[[mkt]])) unname(palette[[mkt]]) else "#4da3a3"
-        fig <- fig |>
-          plotly::add_lines(
-            data = df,
-            x = ~date,
-            y = ~vol_of_vol,
-            name = mkt,
-            line = list(color = col, width = 1.5),
-            hovertemplate = "%{x|%d %b %Y}<br>VoV: %{y:.1%}<extra>%{fullData.name}</extra>"
-          )
-      }
-
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Vol of Vol")
-    })
-
-    # --- Row 3 Left: Realized Vol Surface Heatmap ---
-    output$rv_surface <- plotly::renderPlotly({
-      vts <- page_data()$vol_term_structure
-
-      if (nrow(vts) == 0) {
-        return(ea_plotly_layout(plotly::plot_ly(), x_title = "Market", y_title = "Tenor"))
-      }
-
-      vts_dedup <- dplyr::distinct(vts, .data$market, .data$tenor, .keep_all = TRUE)
-      surface_matrix <- stats::xtabs(realized_vol ~ tenor + market, data = vts_dedup)
-
-      fig <- plotly::plot_ly(
-        x = colnames(surface_matrix),
-        y = rownames(surface_matrix),
-        z = unclass(surface_matrix),
-        type = "heatmap",
-        colors = c("#17202b", "#5a85c8", "#d2a157"),
-        hovertemplate = "Market: %{x}<br>Tenor: %{y}<br>RV: %{z:.1%}<extra>realized vol</extra>"
+      reactable::reactable(
+        display,
+        pagination = FALSE,
+        compact = TRUE,
+        striped = FALSE,
+        highlight = FALSE,
+        borderless = TRUE,
+        theme = ea_reactable_theme(),
+        columns = list(
+          metric = reactable::colDef(name = "Metric", minWidth = 110),
+          context = reactable::colDef(name = "Read", minWidth = 90),
+          value = reactable::colDef(name = "Value", minWidth = 100)
+        )
       )
-
-      ea_plotly_layout(fig, x_title = "Market", y_title = "Tenor", hovermode = "closest")
     })
 
-    # --- Row 3 Right: Implied Vol Term Structure ---
-    output$iv_term <- plotly::renderPlotly({
-      vsg <- page_data()$vol_surface_grid
-      palette <- ea_market_palette()
+    output$vol_cone <- plotly::renderPlotly({
+      vc <- selected_cone()
       fig <- plotly::plot_ly()
 
-      atm <- vsg |> dplyr::filter(abs(.data$moneyness - 1.0) < 0.01)
-
-      if (nrow(atm) == 0) {
-        return(ea_plotly_layout(fig, x_title = "Contract Month", y_title = "ATM IV"))
+      if (nrow(vc) == 0L) {
+        return(ea_plotly_layout(fig, x_title = "Horizon (Days)", y_title = "Annualized Vol"))
       }
 
-      for (mkt in unique(atm$market)) {
-        df <- atm[atm$market == mkt, , drop = FALSE]
-        col <- if (!is.null(palette[[mkt]])) unname(palette[[mkt]]) else "#4da3a3"
-        fig <- fig |>
-          plotly::add_lines(
-            data = df,
-            x = ~curve_point_num,
-            y = ~iv,
-            name = mkt,
-            line = list(color = col, width = 2),
-            hovertemplate = "Tenor M%{x}<br>ATM IV: %{y:.1%}<extra>%{fullData.name}</extra>"
-          )
-      }
-
-      ea_plotly_layout(fig, x_title = "Contract Month", y_title = "ATM IV")
-    })
-
-    # --- Row 4 Left: Skew Chart ---
-    output$vol_skew <- plotly::renderPlotly({
-      skew <- page_data()$vol_skew_snapshot
-      palette <- ea_market_palette()
-      fig <- plotly::plot_ly()
-
-      if (nrow(skew) == 0) {
-        return(ea_plotly_layout(fig, x_title = "Moneyness", y_title = "Implied Vol", hovermode = "closest"))
-      }
-
-      for (mkt in unique(skew$market)) {
-        df <- skew[skew$market == mkt, , drop = FALSE]
-        col <- if (!is.null(palette[[mkt]])) unname(palette[[mkt]]) else "#4da3a3"
-        fig <- fig |>
-          plotly::add_lines(
-            data = df,
-            x = ~moneyness,
-            y = ~iv,
-            name = mkt,
-            line = list(color = col, width = 2),
-            hovertemplate = "Moneyness %{x:.0%}<br>IV: %{y:.1%}<extra>%{fullData.name}</extra>"
-          )
-      }
-
-      ea_plotly_layout(fig, x_title = "Moneyness", y_title = "Implied Vol", hovermode = "closest")
-    })
-
-    # --- Row 4 Right: Cross-Asset Vol Box Plot ---
-    output$cross_asset_vol <- plotly::renderPlotly({
-      cav <- page_data()$cross_asset_vol
-      palette <- ea_market_palette()
-      fig <- plotly::plot_ly()
-
-      if (nrow(cav) == 0) {
-        return(ea_plotly_layout(fig, x_title = "Market", y_title = "Realized Vol", hovermode = "closest"))
-      }
-
-      for (mkt in unique(cav$market)) {
-        df <- cav[cav$market == mkt, , drop = FALSE]
-        col <- if (!is.null(palette[[mkt]])) unname(palette[[mkt]]) else "#4da3a3"
-        fig <- fig |>
-          plotly::add_trace(
-            type = "box",
-            name = mkt,
-            x = mkt,
-            lowerfence = df$min_vol,
-            q1 = df$q1,
-            median = df$median_vol,
-            q3 = df$q3,
-            upperfence = df$max_vol,
-            marker = list(color = col),
-            line = list(color = col),
-            hoverinfo = "y+name"
-          ) |>
-          plotly::add_markers(
-            x = mkt,
-            y = df$current_vol,
-            name = paste(mkt, "current"),
-            marker = list(color = "#d2a157", size = 10, symbol = "diamond"),
-            showlegend = FALSE,
-            hovertemplate = paste0(mkt, " current: %{y:.1%}<extra></extra>")
-          )
-      }
-
-      ea_plotly_layout(fig, x_title = "Market", y_title = "Realized Vol", hovermode = "closest")
-    })
-
-    # --- Row 5: IV vs RV Spread History ---
-    output$iv_rv_spread_chart <- plotly::renderPlotly({
-      ivr <- page_data()$iv_rv_spread
-      fig <- plotly::plot_ly()
-
-      if (nrow(ivr) == 0 || all(is.na(ivr$atm_iv)) || all(is.na(ivr$realized))) {
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Annualized Vol"))
-      }
-
-      ivr_clean <- ivr |> dplyr::filter(!is.na(.data$realized), !is.na(.data$atm_iv))
-
-      if (nrow(ivr_clean) == 0) {
-        return(ea_plotly_layout(fig, x_title = NULL, y_title = "Annualized Vol"))
-      }
-
-      # Rich ribbon: where iv > realized (teal fill)
-      rich <- ivr_clean |> dplyr::mutate(
-        ymin_rich = ifelse(.data$atm_iv >= .data$realized, .data$realized, .data$atm_iv),
-        ymax_rich = ifelse(.data$atm_iv >= .data$realized, .data$atm_iv, .data$realized)
-      )
-
-      fig <- fig |>
-        # Background ribbon - rich (IV > RV): teal
+      fig %>%
         plotly::add_ribbons(
-          data = rich,
-          x = ~date,
-          ymin = ~ifelse(atm_iv >= realized, realized, atm_iv),
-          ymax = ~ifelse(atm_iv >= realized, atm_iv, realized),
-          name = "Options Rich",
-          fillcolor = "rgba(77, 163, 163, 0.25)",
+          data = vc,
+          x = ~horizon,
+          ymin = ~p10,
+          ymax = ~p90,
+          fillcolor = "rgba(77,163,163,0.12)",
           line = list(color = "transparent"),
-          showlegend = TRUE,
+          showlegend = FALSE,
           hoverinfo = "skip"
-        ) |>
-        # Realized vol line
+        ) %>%
+        plotly::add_ribbons(
+          data = vc,
+          x = ~horizon,
+          ymin = ~p25,
+          ymax = ~p75,
+          fillcolor = "rgba(77,163,163,0.24)",
+          line = list(color = "transparent"),
+          showlegend = FALSE,
+          hoverinfo = "skip"
+        ) %>%
         plotly::add_lines(
-          data = ivr_clean,
-          x = ~date,
-          y = ~realized,
-          name = "60d Realized",
-          line = list(color = "#4da3a3", width = 2),
-          hovertemplate = "%{x|%d %b %Y}<br>60d RV: %{y:.1%}<extra></extra>"
-        ) |>
-        # ATM IV line
-        plotly::add_lines(
-          data = ivr_clean,
-          x = ~date,
-          y = ~atm_iv,
-          name = "ATM Implied",
-          line = list(color = "#d2a157", width = 2, dash = "dot"),
-          hovertemplate = "%{x|%d %b %Y}<br>ATM IV: %{y:.1%}<extra></extra>"
+          data = vc,
+          x = ~horizon,
+          y = ~p50,
+          name = paste0("Median · ", page_data()$history_context_label),
+          line = list(color = "#7f8b99", width = 1.4, dash = "dot"),
+          hoverinfo = "skip"
+        ) %>%
+        plotly::add_trace(
+          data = vc,
+          x = ~horizon,
+          y = ~current_vol,
+          type = "scatter",
+          name = "Current",
+          line = list(color = "#4da3a3", width = 2.4),
+          marker = list(color = "#d2a157", size = 8),
+          mode = "lines+markers",
+          customdata = ~percentile,
+          hovertemplate = "%{x}d<br>Current: %{y:.1%}<br>Pct: %{customdata:.0%}<extra></extra>"
+        ) %>%
+        ea_plotly_layout(fig, x_title = "Horizon (Days)", y_title = "Annualized Vol")
+    })
+
+    output$vol_cone_table <- reactable::renderReactable({
+      vc <- selected_cone()
+
+      if (nrow(vc) == 0L) {
+        return(ea_empty_reactable())
+      }
+
+      display <- vc %>%
+        dplyr::transmute(
+          horizon = paste0(.data$horizon, "d"),
+          current = .data$current_vol,
+          pct = .data$percentile,
+          z = .data$zscore,
+          p25 = .data$p25,
+          median = .data$p50,
+          p75 = .data$p75
         )
 
-      ea_plotly_layout(fig, x_title = NULL, y_title = "Annualized Vol")
+      reactable::reactable(
+        display,
+        pagination = FALSE,
+        compact = TRUE,
+        highlight = TRUE,
+        theme = ea_reactable_theme(),
+        columns = list(
+          horizon = reactable::colDef(name = "Horizon"),
+          current = reactable::colDef(name = "Current", format = reactable::colFormat(percent = TRUE, digits = 1)),
+          pct = reactable::colDef(name = "Pct", format = reactable::colFormat(percent = TRUE, digits = 0)),
+          z = reactable::colDef(name = "Z", format = reactable::colFormat(digits = 2)),
+          p25 = reactable::colDef(name = "P25", format = reactable::colFormat(percent = TRUE, digits = 1)),
+          median = reactable::colDef(name = "Median", format = reactable::colFormat(percent = TRUE, digits = 1)),
+          p75 = reactable::colDef(name = "P75", format = reactable::colFormat(percent = TRUE, digits = 1))
+        )
+      )
+    })
+
+    output$vol_term_chart <- plotly::renderPlotly({
+      term_vol <- selected_term()
+      atm_surface <- selected_atm_term()
+      fig <- plotly::plot_ly()
+
+      if (nrow(term_vol) == 0L && nrow(atm_surface) == 0L) {
+        return(ea_plotly_layout(fig, x_title = "Contract Month", y_title = "Annualized Vol"))
+      }
+
+      if (nrow(term_vol) > 0L) {
+        fig <- fig %>%
+          plotly::add_lines(
+            data = term_vol,
+            x = ~tenor,
+            y = ~rv20,
+            name = "20d RV",
+            line = list(color = "#4da3a3", width = 2.2),
+            hovertemplate = "M%{x}<br>20d RV: %{y:.1%}<extra></extra>"
+          ) %>%
+          plotly::add_lines(
+            data = term_vol,
+            x = ~tenor,
+            y = ~rv60,
+            name = "60d RV",
+            line = list(color = "#5a85c8", width = 1.8, dash = "dash"),
+            hovertemplate = "M%{x}<br>60d RV: %{y:.1%}<extra></extra>"
+          )
+      }
+
+      if (nrow(atm_surface) > 0L) {
+        fig <- fig %>%
+          plotly::add_trace(
+            data = atm_surface,
+            x = ~tenor,
+            y = ~atm_iv,
+            type = "scatter",
+            mode = "lines+markers",
+            name = "ATM IV",
+            line = list(color = "#d2a157", width = 1.8, dash = "dot"),
+            marker = list(color = "#d2a157", size = 8),
+            hovertemplate = "M%{x}<br>ATM IV: %{y:.1%}<extra></extra>"
+          )
+      }
+
+      ea_plotly_layout(fig, x_title = "Contract Month", y_title = "Annualized Vol")
+    })
+
+    output$vol_term_table <- reactable::renderReactable({
+      term_vol <- selected_term()
+      atm_surface <- selected_atm_term()
+
+      display <- term_vol %>%
+        dplyr::left_join(atm_surface, by = "tenor") %>%
+        dplyr::mutate(
+          iv_rv_60 = .data$atm_iv - .data$rv60
+        ) %>%
+        dplyr::arrange(.data$tenor)
+
+      if (nrow(display) == 0L) {
+        return(ea_empty_reactable())
+      }
+
+      reactable::reactable(
+        display,
+        pagination = FALSE,
+        compact = TRUE,
+        highlight = TRUE,
+        theme = ea_reactable_theme(),
+        columns = list(
+          market = reactable::colDef(show = FALSE),
+          tenor = reactable::colDef(name = "Tenor"),
+          rv20 = reactable::colDef(name = "20d RV", format = reactable::colFormat(percent = TRUE, digits = 1)),
+          rv60 = reactable::colDef(name = "60d RV", format = reactable::colFormat(percent = TRUE, digits = 1)),
+          rv120 = reactable::colDef(name = "120d RV", format = reactable::colFormat(percent = TRUE, digits = 1)),
+          realized_vol = reactable::colDef(show = FALSE),
+          atm_iv = reactable::colDef(name = "ATM IV", format = reactable::colFormat(percent = TRUE, digits = 1)),
+          iv_rv_60 = reactable::colDef(name = "IV-RV", format = reactable::colFormat(percent = TRUE, digits = 1))
+        )
+      )
     })
   })
 }
